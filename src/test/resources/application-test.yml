@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+
+paynest:
+  jwt:
+    secret: dGVzdC1vbmx5LXBheW5lc3Qtand0LXNlY3JldC0zMmI=
+    ttl: 60m

@@ -1,0 +1,8 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: ${PAYNEST_DB_URL:jdbc:postgresql://localhost:5432/paynest}
+    username: ${PAYNEST_DB_USERNAME:paynest_local}
+    password: ${PAYNEST_DB_PASSWORD:local-only-placeholder}
