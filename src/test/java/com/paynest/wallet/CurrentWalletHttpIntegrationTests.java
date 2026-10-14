@@ -199,6 +199,7 @@ class CurrentWalletHttpIntegrationTests {
         assertForbidden(put("/api/wallet").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/wallet/").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/wallet/fund").header(HttpHeaders.AUTHORIZATION, authorization));
+        assertForbidden(post("/api/wallet/transfers").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/unlisted").header(HttpHeaders.AUTHORIZATION, authorization));
         assertMatrixParameterRejected(get("/api/wallet;owner=other")
                 .header(HttpHeaders.AUTHORIZATION, authorization));
@@ -209,6 +210,7 @@ class CurrentWalletHttpIntegrationTests {
         assertForbidden(put("/api/wallet"));
         assertForbidden(get("/api/wallet/"));
         assertForbidden(get("/api/wallet/fund"));
+        assertForbidden(post("/api/wallet/transfers"));
         assertForbidden(get("/api/unlisted"));
         assertMatrixParameterRejected(get("/api/wallet;owner=other"));
         assertMatrixParameterRejected(get("/api/wallet;jsessionid=untrusted"));
