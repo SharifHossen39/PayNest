@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcOperations;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,5 +36,19 @@ class TestDatabaseSupportTests {
 
         verify(jdbc, never()).update(org.mockito.ArgumentMatchers.anyString());
         verify(jdbc, never()).execute(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void applicationCleanupDeletesTransactionsBeforeTheirWalletAndUserParents() {
+        JdbcOperations jdbc = mock(JdbcOperations.class);
+        when(jdbc.queryForObject("select current_database()", String.class)).thenReturn("paynest_test");
+
+        TestDatabaseSupport.cleanApplicationData(jdbc);
+
+        var order = inOrder(jdbc);
+        order.verify(jdbc).queryForObject("select current_database()", String.class);
+        order.verify(jdbc).update("delete from paynest.transactions");
+        order.verify(jdbc).update("delete from paynest.wallets");
+        order.verify(jdbc).update("delete from paynest.users");
     }
 }

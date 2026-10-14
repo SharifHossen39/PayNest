@@ -30,7 +30,7 @@ class MigrationContractTests {
     }
 
     @Test
-    void migratesToV1ThenUpgradesWithoutChangingItsChecksumOrCatalogContract() {
+    void migratesV1ThenV2ThenV3WithoutChangingPriorChecksumsOrCatalogContracts() {
         Flyway v1Flyway = flyway("classpath:db/migration-fixtures/v1", "1");
         v1Flyway.migrate();
         JdbcTemplate jdbc = jdbcTemplate();
@@ -57,10 +57,10 @@ class MigrationContractTests {
         Flyway productionV1Flyway = flyway("classpath:db/migration", "1");
         assertThat(productionV1Flyway.validateWithResult().validationSuccessful).isTrue();
 
-        Flyway finalFlyway = flyway("classpath:db/migration", "2");
-        finalFlyway.migrate();
+        Flyway v2Flyway = flyway("classpath:db/migration-fixtures/v2", "2");
+        v2Flyway.migrate();
 
-        assertThat(finalFlyway.validateWithResult().validationSuccessful).isTrue();
+        assertThat(v2Flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(jdbc.queryForList(
                 "select table_name from information_schema.tables "
                         + "where table_schema = 'paynest' and table_name <> 'flyway_schema_history' order by table_name",
@@ -101,6 +101,73 @@ class MigrationContractTests {
         assertThat(defaultCurrency).isEqualTo("USD");
         assertThat(jdbc.queryForObject("select count(*) from paynest.users where id = ?", Integer.class, userId))
                 .isOne();
+
+        List<Integer> priorChecksums = appliedChecksums(jdbc);
+        Flyway productionV2Flyway = flyway("classpath:db/migration", "2");
+        assertThat(productionV2Flyway.validateWithResult().validationSuccessful).isTrue();
+
+        Flyway v3Flyway = flyway("classpath:db/migration", "3");
+        v3Flyway.migrate();
+
+        assertThat(v3Flyway.validateWithResult().validationSuccessful).isTrue();
+        assertThat(appliedChecksums(jdbc).subList(0, 2)).containsExactlyElementsOf(priorChecksums);
+        assertThat(jdbc.queryForList(
+                "select table_name from information_schema.tables "
+                        + "where table_schema = 'paynest' and table_name <> 'flyway_schema_history' order by table_name",
+                String.class)).containsExactly("transactions", "users", "wallets");
+        assertThat(jdbc.queryForObject(
+                "select identity_generation from information_schema.columns "
+                        + "where table_schema = 'paynest' and table_name = 'transactions' and column_name = 'id'",
+                String.class)).isEqualTo("BY DEFAULT");
+        assertThat(jdbc.queryForList(
+                "select column_name || ':' || data_type || ':' || is_nullable || ':' "
+                        + "|| coalesce(character_maximum_length::text, '') || ':' "
+                        + "|| coalesce(numeric_precision::text, '') || ':' "
+                        + "|| coalesce(numeric_scale::text, '') "
+                        + "from information_schema.columns "
+                        + "where table_schema = 'paynest' and table_name = 'transactions' "
+                        + "order by ordinal_position",
+                String.class)).containsExactly(
+                        "id:bigint:NO::64:0",
+                        "sender_wallet_id:bigint:NO::64:0",
+                        "receiver_wallet_id:bigint:NO::64:0",
+                        "amount:numeric:NO::19:2",
+                        "status:character varying:NO:20::",
+                        "created_at:timestamp with time zone:NO:::");
+        assertThat(constraintDefinition(jdbc, "fk_transactions_sender_wallet"))
+                .contains("FOREIGN KEY (sender_wallet_id)")
+                .contains("REFERENCES paynest.wallets(id)");
+        assertThat(constraintDefinition(jdbc, "fk_transactions_receiver_wallet"))
+                .contains("FOREIGN KEY (receiver_wallet_id)")
+                .contains("REFERENCES paynest.wallets(id)");
+        assertThat(constraintDefinition(jdbc, "ck_transactions_positive_amount"))
+                .contains("amount > 0.00").contains("NaN");
+        assertThat(constraintDefinition(jdbc, "ck_transactions_distinct_wallets"))
+                .contains("sender_wallet_id <> receiver_wallet_id");
+        assertThat(constraintDefinition(jdbc, "ck_transactions_completed_status"))
+                .contains("status").contains("COMPLETED");
+        assertThat(constraintNames(jdbc)).containsExactly(
+                "ck_transactions_completed_status",
+                "ck_transactions_distinct_wallets",
+                "ck_transactions_positive_amount",
+                "fk_transactions_receiver_wallet",
+                "fk_transactions_sender_wallet",
+                "nn_transactions_amount",
+                "nn_transactions_created_at",
+                "nn_transactions_receiver_wallet",
+                "nn_transactions_sender_wallet",
+                "nn_transactions_status",
+                "transactions_id_not_null",
+                "transactions_pkey");
+        assertThat(foreignKeyDeleteActions(jdbc)).containsExactly(
+                "fk_transactions_receiver_wallet:a",
+                "fk_transactions_sender_wallet:a");
+        assertThat(indexDefinition(jdbc, "idx_transactions_sender_history")).isEqualTo(
+                "CREATE INDEX idx_transactions_sender_history ON paynest.transactions USING btree "
+                        + "(sender_wallet_id, created_at DESC, id DESC)");
+        assertThat(indexDefinition(jdbc, "idx_transactions_receiver_history")).isEqualTo(
+                "CREATE INDEX idx_transactions_receiver_history ON paynest.transactions USING btree "
+                        + "(receiver_wallet_id, created_at DESC, id DESC)");
     }
 
     private Flyway flyway(String location, String target) {
@@ -126,5 +193,35 @@ class MigrationContractTests {
                         + "where connamespace = 'paynest'::regnamespace and conname = ?",
                 String.class,
                 constraintName);
+    }
+
+    private List<Integer> appliedChecksums(JdbcTemplate jdbc) {
+        return jdbc.queryForList(
+                "select checksum from paynest.flyway_schema_history "
+                        + "where version is not null order by installed_rank",
+                Integer.class);
+    }
+
+    private String indexDefinition(JdbcTemplate jdbc, String indexName) {
+        return jdbc.queryForObject(
+                "select pg_get_indexdef(indexrelid) from pg_index "
+                        + "where indexrelid = ('paynest.' || ?)::regclass",
+                String.class,
+                indexName);
+    }
+
+    private List<String> constraintNames(JdbcTemplate jdbc) {
+        return jdbc.queryForList(
+                "select conname from pg_constraint "
+                        + "where conrelid = 'paynest.transactions'::regclass order by conname",
+                String.class);
+    }
+
+    private List<String> foreignKeyDeleteActions(JdbcTemplate jdbc) {
+        return jdbc.queryForList(
+                "select conname || ':' || confdeltype::text from pg_constraint "
+                        + "where conrelid = 'paynest.transactions'::regclass "
+                        + "and contype = 'f' order by conname",
+                String.class);
     }
 }

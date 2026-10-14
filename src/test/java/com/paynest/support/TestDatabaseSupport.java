@@ -31,6 +31,7 @@ public final class TestDatabaseSupport {
 
     public static void cleanApplicationData(JdbcOperations jdbc) {
         verifyDedicatedTestDatabase(jdbc);
+        jdbc.update("delete from paynest.transactions");
         jdbc.update("delete from paynest.wallets");
         jdbc.update("delete from paynest.users");
     }

@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.UUID;
 
 import com.paynest.support.TestDatabaseSupport;
+import com.paynest.transaction.domain.Transaction;
+import com.paynest.transaction.domain.TransactionStatus;
+import com.paynest.transaction.persistence.TransactionRepository;
 import com.paynest.user.domain.EmailNormalizer;
 import com.paynest.user.domain.User;
 import com.paynest.user.persistence.UserRepository;
@@ -51,6 +54,9 @@ class PayNestApplicationTests {
     private WalletRepository walletRepository;
 
     @Autowired
+    private TransactionRepository transactionRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -73,8 +79,8 @@ class PayNestApplicationTests {
                 Integer.class);
 
         assertThat(databaseVersion).startsWith("18.6");
-        assertThat(payNestTables).containsExactly("flyway_schema_history", "users", "wallets");
-        assertThat(appliedVersionedMigrations).isEqualTo(2);
+        assertThat(payNestTables).containsExactly("flyway_schema_history", "transactions", "users", "wallets");
+        assertThat(appliedVersionedMigrations).isEqualTo(3);
         assertThat(environment.getProperty("spring.flyway.enabled")).isEqualTo("true");
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(environment.getProperty("spring.flyway.default-schema")).isEqualTo("paynest");
@@ -92,15 +98,25 @@ class PayNestApplicationTests {
 
     @Test
     @Transactional
-    void repositoriesRoundTripGeneratedIdsNormalizedUserAndLazyWalletOwnership() {
+    void repositoriesRoundTripAllThreeEntitiesWithLazyOwnershipAndExactValues() {
         String suffix = UUID.randomUUID().toString();
         User user = userRepository.saveAndFlush(User.create(
                 "  Ada Lovelace  ", " ADA+" + suffix + "@EXAMPLE.COM ", "{hash}opaque", FIXED_CLOCK));
         Wallet wallet = walletRepository.saveAndFlush(Wallet.create(user, FIXED_CLOCK));
+        User receiverUser = userRepository.saveAndFlush(User.create(
+                "Grace Hopper", "grace+" + suffix + "@example.com", "{hash}opaque", FIXED_CLOCK));
+        Wallet receiverWallet = walletRepository.saveAndFlush(Wallet.create(receiverUser, FIXED_CLOCK));
+        Transaction transaction = transactionRepository.saveAndFlush(Transaction.completed(
+                wallet, receiverWallet, new BigDecimal("12.30"), FIXED_CLOCK));
 
         Long userId = user.getId();
         Long walletId = wallet.getId();
+        Long transactionId = transaction.getId();
         entityManager.clear();
+
+        Transaction reloadedTransaction = transactionRepository.findById(transactionId).orElseThrow();
+        assertThat(Persistence.getPersistenceUtil().isLoaded(reloadedTransaction, "senderWallet")).isFalse();
+        assertThat(Persistence.getPersistenceUtil().isLoaded(reloadedTransaction, "receiverWallet")).isFalse();
 
         Wallet reloadedWallet = walletRepository.findByUserId(userId).orElseThrow();
 
@@ -116,6 +132,11 @@ class PayNestApplicationTests {
         assertThat(reloadedWallet.getCurrency()).isEqualTo("USD");
         assertThat(reloadedWallet.getCreatedAt()).isEqualTo(PERSISTED_INSTANT);
         assertThat(reloadedWallet.getUser().getId()).isEqualTo(userId);
+        assertThat(reloadedTransaction.getAmount()).isEqualByComparingTo("12.30");
+        assertThat(reloadedTransaction.getStatus()).isEqualTo(TransactionStatus.COMPLETED);
+        assertThat(reloadedTransaction.getCreatedAt()).isEqualTo(PERSISTED_INSTANT);
+        assertThat(reloadedTransaction.getSenderWallet().getId()).isEqualTo(walletId);
+        assertThat(reloadedTransaction.getReceiverWallet().getId()).isEqualTo(receiverWallet.getId());
 
         reloadedWallet.credit(new BigDecimal("12.30"));
         reloadedWallet.debit(new BigDecimal("2.05"));

@@ -15,6 +15,7 @@ import javax.crypto.SecretKey;
 
 import com.paynest.auth.security.JwtService;
 import com.paynest.support.TestDatabaseSupport;
+import com.paynest.transaction.domain.Transaction;
 import com.paynest.user.domain.User;
 import com.paynest.user.persistence.UserRepository;
 import com.paynest.wallet.domain.Wallet;
@@ -214,7 +215,7 @@ class CurrentWalletHttpIntegrationTests {
     }
 
     @Test
-    void persistenceAndEpicOneHttpSurfaceRemainUnchangedApartFromCurrentWallet() {
+    void persistenceIncludesV3TransactionWhileTheHttpSurfaceRemainsUnchanged() {
         Integer migrations = jdbcTemplate.queryForObject(
                 "select count(*) from paynest.flyway_schema_history where version is not null",
                 Integer.class);
@@ -224,11 +225,12 @@ class CurrentWalletHttpIntegrationTests {
                         + "order by table_name",
                 String.class);
 
-        assertThat(migrations).isEqualTo(2);
-        assertThat(domainTables).containsExactly("users", "wallets");
+        assertThat(migrations).isEqualTo(3);
+        assertThat(domainTables).containsExactly("transactions", "users", "wallets");
         assertThat(entityManagerFactory.getMetamodel().getEntities())
                 .extracting(entity -> entity.getJavaType().getName())
-                .containsExactlyInAnyOrder(User.class.getName(), Wallet.class.getName());
+                .containsExactlyInAnyOrder(
+                        Transaction.class.getName(), User.class.getName(), Wallet.class.getName());
         assertThat(productEndpoints()).containsExactlyInAnyOrder(
                 "POST /api/auth/signup",
                 "POST /api/auth/signin",
