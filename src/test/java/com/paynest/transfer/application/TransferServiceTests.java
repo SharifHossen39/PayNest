@@ -37,8 +37,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -293,6 +295,73 @@ class TransferServiceTests {
 
         assertBalances(senderWallet, "100.00", recipientWallet, "50.00");
         verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void recipientOverflowOccursAfterSenderDebit() {
+        BigDecimal maximum = new BigDecimal("99999999999999999.99");
+        User sender = user(1L, "Sender", "sender@example.com");
+        User recipient = user(2L, "Recipient", "recipient@example.com");
+        Wallet senderWallet = wallet(11L, sender, "25.00");
+        Wallet recipientWallet = wallet(22L, recipient, maximum.toPlainString());
+        allowPartyResolution(sender, recipient, senderWallet, recipientWallet);
+
+        assertThatThrownBy(() -> transferService.transfer(
+                sender.getId(),
+                new TransferRequest(recipient.getEmail(), new BigDecimal("1.00"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Balance exceeds the supported maximum");
+
+        assertBalances(senderWallet, "24.00", recipientWallet, maximum.toPlainString());
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void clockFailureOccursAfterBothWalletMutationsAndBeforeRepositorySave() {
+        User sender = user(1L, "Sender", "sender@example.com");
+        User recipient = user(2L, "Recipient", "recipient@example.com");
+        Wallet senderWallet = wallet(11L, sender, "80.00");
+        Wallet recipientWallet = wallet(22L, recipient, "20.00");
+        allowPartyResolution(sender, recipient, senderWallet, recipientWallet);
+        RuntimeException clockFailure = new IllegalStateException("forced clock failure");
+        Clock throwingClock = mock(Clock.class);
+        when(throwingClock.instant()).thenThrow(clockFailure);
+        transferService = new TransferService(
+                userRepository,
+                walletRepository,
+                transactionRepository,
+                throwingClock,
+                VALIDATOR);
+
+        Throwable failure = catchThrowable(() -> transferService.transfer(
+                sender.getId(),
+                new TransferRequest(recipient.getEmail(), new BigDecimal("15.00"))));
+
+        assertThat(failure).isSameAs(clockFailure);
+        assertBalances(senderWallet, "65.00", recipientWallet, "35.00");
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void repositorySaveFailureOccursAfterMutationsAndClockStampedTransactionCreation() {
+        User sender = user(1L, "Sender", "sender@example.com");
+        User recipient = user(2L, "Recipient", "recipient@example.com");
+        Wallet senderWallet = wallet(11L, sender, "80.00");
+        Wallet recipientWallet = wallet(22L, recipient, "20.00");
+        allowPartyResolution(sender, recipient, senderWallet, recipientWallet);
+        RuntimeException saveFailure = new IllegalStateException("forced transaction save failure");
+        when(transactionRepository.save(any(Transaction.class))).thenThrow(saveFailure);
+
+        Throwable failure = catchThrowable(() -> transferService.transfer(
+                sender.getId(),
+                new TransferRequest(recipient.getEmail(), new BigDecimal("15.00"))));
+
+        assertThat(failure).isSameAs(saveFailure);
+        assertBalances(senderWallet, "65.00", recipientWallet, "35.00");
+        ArgumentCaptor<Transaction> transactionCaptor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepository).save(transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().getCreatedAt())
+                .isEqualTo(Instant.parse("2026-10-14T10:15:30.123456Z"));
     }
 
     private void allowPartyResolution(
