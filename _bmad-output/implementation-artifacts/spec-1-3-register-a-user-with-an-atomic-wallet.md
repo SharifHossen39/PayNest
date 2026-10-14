@@ -72,6 +72,8 @@ context:
 
 ## Spec Change Log
 
+- 2026-10-12: Replaced normative container-test guidance with the guarded dedicated `paynest_test` strategy. Earlier container execution entries remain historical, non-authoritative evidence.
+
 ## Review Triage Log
 
 | ID | Verdict | Evidence and route |
@@ -107,4 +109,4 @@ Use focused signup validation because raw `@Size` counts UTF-16 units and raw `@
 - `mvn.cmd -q '-Djava.version=21' test` - passed locally: 22 tests, 0 failures/errors/skips, including all 5 PostgreSQL signup integration scenarios. Java 25 was not installed in the execution environment.
 - `docker run ... maven:3.10.0-eclipse-temurin-25 ./mvnw test` - passed authoritatively: 22 tests, 0 failures/errors/skips on Java 25.0.4.1 with PostgreSQL 18.6.
 - Post-review Java 25/PostgreSQL 18.6 full suite - passed: 37 tests, 0 failures/errors/skips.
-- `./mvnw test` — expected: all unit and PostgreSQL Testcontainers tests pass on Java 25; Flyway still validates only V1/V2 and Hibernate validates the unchanged three-table schema.
+- `./mvnw test` — expected: all unit and dedicated-PostgreSQL integration tests pass on Java 25; Flyway still validates only V1/V2 and Hibernate validates the unchanged schema.

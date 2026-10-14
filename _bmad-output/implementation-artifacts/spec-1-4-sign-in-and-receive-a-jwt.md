@@ -76,6 +76,7 @@ context:
 
 - 2026-10-07: Implemented Story 1.4 and added focused plus PostgreSQL-backed acceptance coverage.
 - 2026-10-07: Completed the three-layer review, applied accepted hardening fixes, and marked Story 1.4 done after full verification.
+- 2026-10-12: Replaced normative container-test guidance with the guarded dedicated `paynest_test` strategy. Earlier container execution entries remain historical, non-authoritative evidence.
 
 ## Review Triage Log
 
@@ -107,6 +108,6 @@ Use Spring `Duration` syntax (`60m` default), omit optional `iss`, truncate `iat
 ## Verification
 
 **Commands:**
-- `./mvnw test` — expected: all Java 25 unit and PostgreSQL 18.6 Testcontainers tests pass; Flyway remains at V1/V2 and no additional persisted type appears.
+- `./mvnw test` — expected: all Java 25 unit and PostgreSQL 18.6 integration tests pass against the guarded dedicated `paynest_test` database; Flyway remains at V1/V2 and no additional persisted type appears.
 - `mvn.cmd "-Djava.version=21" test` — passed locally: 53 tests, 0 failures/errors/skips, including PostgreSQL 18.6 Testcontainers; Java 21 override was required because Java 25 is not installed on this host.
 - `docker run ... maven:3.10.0-eclipse-temurin-25 ./mvnw test` — passed authoritatively: 53 tests, 0 failures/errors/skips on Java 25.0.4.1 with PostgreSQL 18.6.

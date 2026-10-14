@@ -107,13 +107,13 @@ graph TD
 
 - **Binds:** all acceptance criteria; testing requirements
 - **Prevents:** mocks or H2 falsely proving constraints, rollback, locking, ownership, or query efficiency.
-- **Rule:** Unit tests cover pure rules. Testcontainers PostgreSQL integration tests cover HTTP, security, JPA mappings, Flyway, constraints, atomic rollback, and authorization. Separate-transaction concurrency tests prove no overspend/lost update. A query-count or equivalent SQL-shape test proves a 20-item history page does not issue one counterparty query per row. OpenAPI contract tests assert the seven PRD product paths and exact error schema.
+- **Rule:** Unit tests cover pure rules. Integration tests use a dedicated developer-managed PostgreSQL database named exactly `paynest_test`, supplied through `PAYNEST_TEST_DB_*`; a test-only database-name guard runs before cleanup or schema reset. These tests cover HTTP, security, JPA mappings, Flyway, constraints, atomic rollback, and authorization. Separate-transaction concurrency tests prove no overspend/lost update. A query-count or equivalent SQL-shape test proves a 20-item history page does not issue one counterparty query per row. OpenAPI contract tests assert the seven PRD product paths and exact error schema. H2 and container-based substitutes do not provide acceptance evidence.
 
 ### AD-12 - Development funding and delivery boundary [ADOPTED]
 
 - **Binds:** AC-WALLET-3, AC-QUALITY-3..AC-QUALITY-5
-- **Prevents:** a public funding feature, Docker-first development, secrets in source, and hidden infrastructure.
-- **Rule:** New Wallets start at zero. Funding is available only through test fixtures or a manual local-only SQL helper outside production routes/classpath. Docker is a later phase and Compose contains only `paynest-app` and `postgres`. Secrets are externalized; no sensitive payload/token/hash is logged.
+- **Prevents:** a public funding feature, container-based delivery, secrets in source, and hidden infrastructure.
+- **Rule:** New Wallets start at zero. Funding is available only through test fixtures or a manual local-only SQL helper outside production routes/classpath. Delivery is direct local Spring Boot startup against developer-managed PostgreSQL; container tooling is outside scope. Secrets are externalized; no sensitive payload/token/hash is logged.
 
 ## Consistency Conventions
 
@@ -142,7 +142,7 @@ graph TD
 | JJWT | 0.13.0 |
 | springdoc-openapi | 3.1.1 |
 | JUnit Jupiter | 6.0.3 (Boot-managed) |
-| Testcontainers | 2.0.5 (Boot-managed) |
+| PostgreSQL integration database | Dedicated developer-managed `paynest_test` |
 
 ## Structural Seed
 
@@ -177,7 +177,7 @@ erDiagram
 | FR-7..FR-10 Transfer and record | `transfer.application`, Wallet domain/repository, Transaction repository | AD-2, AD-3, AD-5, AD-6, AD-7 |
 | FR-11..FR-13 History/detail/pagination | `transaction.api/application/persistence` | AD-2, AD-3, AD-7, AD-8, AD-9, AD-10 |
 | FR-14 OpenAPI | `common.config`, controller/DTO annotations | AD-9, AD-11 |
-| Error/security/test/delivery concerns | `common`, `auth.security`, tests, Docker files | AD-8, AD-9, AD-11, AD-12 |
+| Error/security/test/delivery concerns | `common`, `auth.security`, tests, local setup documentation | AD-8, AD-9, AD-11, AD-12 |
 
 ## Deferred
 

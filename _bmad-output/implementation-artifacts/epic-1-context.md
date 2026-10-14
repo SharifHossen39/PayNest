@@ -24,7 +24,7 @@ Deliver the complete secure account journey: a new User registers with safely st
 - All non-Auth product operations are denied by default without a valid token. Ownership comes only from the verified principal; current-profile and Wallet APIs accept no caller-supplied User or Wallet identifier.
 - Responses use dedicated DTOs and never expose password hashes, JWT claims, persistence relationships, or entity graphs. Known failures use the shared safe error envelope and stable codes; no response or log may reveal credentials, tokens, secrets, SQL, stack traces, or internal class details.
 - Money is `BigDecimal`/`NUMERIC(19,2)` and Wallet currency is USD only. Timestamps are `Instant`/`TIMESTAMPTZ`, serialized as ISO 8601 UTC, with an injectable `Clock` for deterministic tests.
-- Verify HTTP, security, JPA mappings, Flyway, constraints, concurrent duplicate registration, and rollback against Testcontainers PostgreSQL; do not use H2 as evidence for database behavior.
+- Verify HTTP, security, JPA mappings, Flyway, constraints, concurrent duplicate registration, and rollback against the dedicated developer-managed `paynest_test` PostgreSQL database. Bind it through `PAYNEST_TEST_DB_*`, verify the exact database name before cleanup or schema reset, and do not use H2 or container tooling as evidence for database behavior.
 
 ## Technical Decisions
 

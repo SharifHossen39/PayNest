@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+import com.paynest.support.TestDatabaseSupport;
 import com.paynest.user.domain.EmailNormalizer;
 import com.paynest.user.domain.User;
 import com.paynest.user.persistence.UserRepository;
@@ -16,38 +17,26 @@ import com.paynest.wallet.persistence.WalletRepository;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Persistence;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest(properties = {
-        "PAYNEST_DB_URL=jdbc:postgresql://placeholder.invalid:5432/paynest_test",
-        "PAYNEST_DB_USERNAME=safe-test-placeholder-user",
-        "PAYNEST_DB_PASSWORD=safe-test-placeholder-password"
-})
+@SpringBootTest
 @ActiveProfiles("test")
-@Testcontainers
 class PayNestApplicationTests {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-10-07T08:30:00.123456789Z");
     private static final Instant PERSISTED_INSTANT = Instant.parse("2026-10-07T08:30:00.123456Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18.6");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -66,6 +55,11 @@ class PayNestApplicationTests {
 
     @Autowired
     private Clock clock;
+
+    @BeforeEach
+    void verifyDedicatedTestDatabase() {
+        TestDatabaseSupport.cleanApplicationData(jdbcTemplate);
+    }
 
     @Test
     void contextStartsAgainstMigratedPostgreSqlAndValidatesTheMappedSchema() {
@@ -87,12 +81,12 @@ class PayNestApplicationTests {
         assertThat(environment.getProperty("spring.flyway.schemas")).isEqualTo("paynest");
         assertThat(environment.getProperty("spring.jpa.properties.hibernate.default_schema"))
                 .isEqualTo("paynest");
+        assertThat(jdbcTemplate.queryForObject("select current_database()", String.class))
+                .isEqualTo("paynest_test");
         assertThat(environment.getProperty("spring.datasource.url"))
-                .isEqualTo("jdbc:postgresql://placeholder.invalid:5432/paynest_test");
+                .isEqualTo(System.getenv("PAYNEST_TEST_DB_URL"));
         assertThat(environment.getProperty("spring.datasource.username"))
-                .isEqualTo("safe-test-placeholder-user");
-        assertThat(environment.getProperty("spring.datasource.password"))
-                .isEqualTo("safe-test-placeholder-password");
+                .isEqualTo(System.getenv("PAYNEST_TEST_DB_USERNAME"));
         assertThat(clock.getZone()).isEqualTo(ZoneOffset.UTC);
     }
 

@@ -45,8 +45,10 @@ No interface, pattern, or abstraction is required solely to make later microserv
 - A well-maintained JWT library compatible with the selected Spring Boot version.
 - PostgreSQL with Flyway or Liquibase migrations.
 - springdoc-openapi for Swagger/OpenAPI.
-- JUnit 5, Spring Boot Test, security test utilities, and PostgreSQL-backed integration tests; Testcontainers is suitable when the local environment supports Docker.
-- A Dockerfile and Docker Compose for the application and PostgreSQL.
+- JUnit 5, Spring Boot Test, security test utilities, and PostgreSQL-backed integration tests against a dedicated developer-managed `paynest_test` database.
+- Direct Spring Boot startup against developer-managed PostgreSQL, with Flyway migration and Hibernate validation evidence.
+
+Docker, Docker Compose, Testcontainers, and container-based delivery/testing are explicitly outside scope. Test setup must never delete data or reset a schema until `select current_database()` returns exactly `paynest_test`.
 
 Exact dependency versions belong in the build and architecture records, not the product requirements.
 

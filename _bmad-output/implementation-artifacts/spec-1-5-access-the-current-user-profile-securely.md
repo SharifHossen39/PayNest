@@ -71,6 +71,8 @@ context:
 
 ## Spec Change Log
 
+- 2026-10-12: Confirmed PostgreSQL-backed acceptance coverage now uses the guarded dedicated `paynest_test` database; container-based historical verification is superseded.
+
 ## Review Triage Log
 
 | ID | Reviewer finding | Classification | Disposition |

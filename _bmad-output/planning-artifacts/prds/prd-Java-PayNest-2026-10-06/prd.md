@@ -2,7 +2,7 @@
 title: PayNest Product Requirements Document
 status: final
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-12
 ---
 
 # Product Requirements Document: PayNest
@@ -55,7 +55,7 @@ PayNest is primarily a backend learning project with realistic business behavior
 | Testing | Unit versus integration tests, security tests, rollback tests, concurrent transaction tests, realistic PostgreSQL behavior. |
 | Modular monolith | Package-by-feature, module ownership, service and repository boundaries, in-process collaboration. |
 | API documentation | OpenAPI schemas, examples, error responses, JWT security scheme. |
-| Containerization | Reproducible application/database startup and externalized configuration. |
+| Direct local operation | Reproducible Spring Boot/PostgreSQL startup, dedicated test-database safety, and externalized configuration. |
 | Future microservices | Service-boundary reasoning, API Gateway, REST, Kafka, events, separate databases—documented but not implemented. |
 
 ## 4. Non-Goals
@@ -70,6 +70,7 @@ The MVP is not a real bank, regulated financial service, payment processor, or p
 - A web or mobile UI.
 - Microservices, an API gateway, service discovery, Kafka, separate service databases, distributed transactions, distributed tracing, Kubernetes, or complex DevOps infrastructure.
 - Redis, event-driven architecture, or infrastructure introduced only to prepare for future service extraction.
+- Docker, Docker Compose, Testcontainers, and other container-based delivery or testing tooling.
 - Production-grade availability, throughput, support, or regulatory SLAs.
 
 Future possibilities are described only in Section 22 and are not MVP commitments.
@@ -814,7 +815,9 @@ Because all real registrations start at zero and deposits are out of scope, auto
 ### 20.5 Configuration and portability
 
 - Environment-specific values use external configuration.
-- The project can run locally against PostgreSQL and with Docker Compose.
+- The project runs directly against a developer-managed PostgreSQL database.
+- Automated integration tests use a separate developer-managed `paynest_test` PostgreSQL database and must verify that exact database name before destructive setup.
+- Docker, Docker Compose, Testcontainers, and container-based delivery/testing are outside the PayNest MVP and learning path.
 - A clean setup path and sample non-secret environment configuration are documented.
 
 ## 21. Development Phases
@@ -833,10 +836,10 @@ Foundation
 → Concurrency hardening
 → Testing
 → OpenAPI
-→ Docker
+→ Direct local verification
 ```
 
-This sequence is a learning plan, not an additional product requirement. Docker is a later delivery exercise and is not a prerequisite for early feature development.
+This sequence is a learning plan, not an additional product requirement. Direct local verification completes the MVP without a container-based delivery phase.
 
 ### Phase 1 — Project foundation
 
@@ -871,10 +874,10 @@ This sequence is a learning plan, not an additional product requirement. Docker 
 
 - Complete global exception handling, unit and PostgreSQL-backed integration tests, OpenAPI documentation, safe logging, and configuration/documentation cleanup.
 
-### Phase 8 — Containerization
+### Phase 8 — Direct local verification
 
-- Add a Dockerfile and Docker Compose setup for the Spring Boot application and PostgreSQL.
-- Verify clean local startup, migration, registration, sign-in, Wallet read, seeded Transfer, and history flow.
+- Document local PostgreSQL prerequisites, development and test database setup, required environment variables, direct Spring Boot startup, test execution, fixture funding, OpenAPI access, and shutdown.
+- Verify a clean direct startup applies Flyway migrations, passes Hibernate validation, and supports registration, sign-in, Wallet read, seeded Transfer, and history flow.
 
 ## 22. Future Microservice Evolution
 
@@ -968,7 +971,7 @@ Extraction would force explicit decisions about duplicated identity data, servic
 
 - **AC-QUALITY-1:** OpenAPI describes all endpoints, schemas, bearer authentication, and expected errors.
 - **AC-QUALITY-2:** Unit and integration tests cover the behaviors listed in Section 19 without relying on an arbitrary coverage target.
-- **AC-QUALITY-3:** A clean Docker Compose start runs the monolithic application with PostgreSQL and applies database migrations.
+- **AC-QUALITY-3:** Given a clean developer-managed PostgreSQL database, direct local startup runs the monolithic application, applies Flyway migrations, and passes Hibernate schema validation.
 - **AC-QUALITY-4:** Repository inspection shows one Spring Boot application, one PostgreSQL database, exactly three core persisted domain entities (User, Wallet, Transaction), feature modules, and no microservice infrastructure.
 - **AC-QUALITY-5:** Client errors and application logs expose no plaintext passwords, hashes, bearer tokens, signing secrets, SQL details, or stack traces.
 

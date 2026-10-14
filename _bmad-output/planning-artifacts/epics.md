@@ -90,15 +90,15 @@ NFR18: Testing must prioritize observable business behavior, security boundaries
 
 NFR19: Java timestamps use `Instant`, PostgreSQL uses `TIMESTAMPTZ`, external timestamps are ISO 8601 UTC instants, and time-dependent code remains deterministic in tests.
 
-NFR20: The finished project must run directly against PostgreSQL and through a minimal Docker Compose environment containing only `paynest-app` and `postgres`, with migrations applied on clean startup.
+NFR20: The finished project must start directly against developer-managed PostgreSQL, applying Flyway migrations and passing Hibernate validation on a clean local database.
 
 NFR21: The MVP must contain exactly three persisted domain entities and exactly seven product API endpoints, with no public Wallet-funding route or microservice infrastructure.
 
 ### Additional Requirements
 
-AR1: Use Java 25 LTS, Spring Boot 4.1.1, Maven Wrapper 3.10.0, PostgreSQL 18.6, Boot-managed Hibernate/Flyway/JDBC/JUnit/Testcontainers versions, JJWT 0.13.0, and springdoc-openapi 3.1.1 as the verified baseline.
+AR1: Use Java 25 LTS, Spring Boot 4.1.1, Maven Wrapper 3.10.0, PostgreSQL 18.6, Boot-managed Hibernate/Flyway/JDBC/JUnit versions, JJWT 0.13.0, and springdoc-openapi 3.1.1 as the verified baseline.
 
-AR2: Keep dependencies limited to Spring Web MVC, Validation, Data JPA, Security, Flyway, PostgreSQL, JJWT, springdoc, Spring Boot Test, Security Test, and Testcontainers PostgreSQL; do not add Lombok, MapStruct, Spring Modulith, Actuator, cloud, cache, messaging, resilience, or code-generation dependencies without a concrete requirement.
+AR2: Keep dependencies limited to Spring Web MVC, Validation, Data JPA, Security, Flyway, PostgreSQL, JJWT, springdoc, Spring Boot Test, and Security Test; do not add Lombok, MapStruct, Spring Modulith, Actuator, cloud, cache, messaging, resilience, container, or code-generation dependencies without a concrete requirement.
 
 AR3: Use base package `com.paynest` with feature packages `auth`, `user`, `wallet`, `transfer`, `transaction`, and `common`; the `transfer` slice contains the use case and controller but no entity or repository.
 
@@ -140,7 +140,7 @@ AR21: Use explicit request/response DTOs and manual mapping. Validate names, ema
 
 AR22: Use an injectable `Clock` for entity and token timestamps and configure application/database time behavior for UTC.
 
-AR23: Use Testcontainers PostgreSQL with Spring Boot `@ServiceConnection` for persistence integration tests; do not substitute H2 for migration, constraint, transaction, or locking evidence.
+AR23: Use a dedicated developer-managed PostgreSQL database named exactly `paynest_test`, configured through `PAYNEST_TEST_DB_URL`, `PAYNEST_TEST_DB_USERNAME`, and `PAYNEST_TEST_DB_PASSWORD`, for persistence integration tests. Verify the database name before cleanup or schema reset; do not substitute H2 for migration, constraint, transaction, or locking evidence.
 
 AR24: Run concurrency tests with separate threads, transactions, and database connections coordinated by a latch/barrier; do not wrap the test itself in one transaction, and assert committed database state after both operations finish.
 
@@ -150,9 +150,9 @@ AR26: Local demonstrations may use `scripts/dev/fund-wallet.sql`; automated test
 
 AR27: Use springdoc to define one `bearerAuth` HTTP bearer/JWT scheme, document the seven operations and shared errors, mark only Auth endpoints public, and assert the generated specification contains exactly seven product paths.
 
-AR28: Add Docker only after the application, tests, concurrency hardening, and OpenAPI work. Use a multi-stage Java 25 image and Compose with only `paynest-app` and `postgres`; externalize database and JWT secrets.
+AR28: Complete delivery through documented direct Spring Boot startup against developer-managed PostgreSQL. Docker, Docker Compose, Testcontainers, and other container-based delivery/testing are outside scope; externalize database and JWT secrets.
 
-AR29: Follow the learning sequence: foundation, PostgreSQL/Flyway, User, Wallet relationship, atomic registration, Security, JWT, User/Wallet APIs, Transaction persistence, basic Transfer internals, rollback, concurrency problem, pessimistic locks plus public Transfer API, concurrency tests, history/detail, error hardening, OpenAPI, and Docker.
+AR29: Follow the learning sequence: foundation, PostgreSQL/Flyway, User, Wallet relationship, atomic registration, Security, JWT, User/Wallet APIs, Transaction persistence, basic Transfer internals, rollback, concurrency problem, pessimistic locks plus public Transfer API, concurrency tests, history/detail, error hardening, OpenAPI, and direct local verification.
 
 AR30: Treat microservice extraction, gateway, Kafka, Redis, service discovery, separate databases, domain events, outbox, sagas, distributed transactions, Kubernetes, and distributed observability as future theory only; none may shape MVP code or infrastructure.
 
@@ -218,11 +218,11 @@ An authenticated User can review a bounded newest-first history of money they se
 
 ### Epic 4: Documented and Reproducible MVP Delivery
 
-The learner/developer can discover all seven PayNest operations through accurate OpenAPI documentation and run the completed modular monolith reproducibly against PostgreSQL, with stable errors, safe configuration, final integration evidence, and minimal Docker delivery.
+The learner/developer can discover all seven PayNest operations through accurate OpenAPI documentation and run the completed modular monolith reproducibly against developer-managed PostgreSQL, with stable errors, safe configuration, final integration evidence, and direct local delivery.
 
 **FRs covered:** FR14
 
-**Implementation notes:** Complete shared error hardening, safe logging/configuration, full contract verification, springdoc bearer documentation, the exactly-seven-path assertion, clean setup guidance, multi-stage application image, and Compose containing only `paynest-app` and `postgres`. This is the final delivery outcome, not an infrastructure expansion.
+**Implementation notes:** Complete shared error hardening, safe logging/configuration, full contract verification, springdoc bearer documentation, the exactly-seven-path assertion, and clean direct-local setup guidance for separate development and test databases. This is the final delivery outcome, not an infrastructure expansion.
 
 ## Epic 1: Secure Account and Wallet Access
 
@@ -243,7 +243,7 @@ So that each product capability can be implemented and tested on a consistent fo
 
 **Given** an empty PostgreSQL 18.6 database
 **When** the foundation application starts before any entity story is implemented
-**Then** datasource, Flyway, and Testcontainers connectivity initialize successfully
+**Then** datasource and Flyway connectivity initialize successfully against developer-managed PostgreSQL
 **And** Hibernate is configured for validation rather than schema creation or update
 **And** Flyway and Hibernate target the same configured PostgreSQL schema
 **And** no versioned migration is consumed and no User, Wallet, or Transaction domain table is front-loaded by the foundation story.
@@ -260,8 +260,9 @@ So that each product capability can be implemented and tested on a consistent fo
 
 **Given** the integration-test profile
 **When** the persistence smoke test runs
-**Then** Testcontainers starts a real PostgreSQL instance through Spring Boot service-connection support
-**And** Flyway initialization and application-context startup succeed without H2 or any versioned domain migration.
+**Then** the configured datasource connects to the dedicated `paynest_test` PostgreSQL database
+**And** Flyway initialization and application-context startup succeed without H2, container provisioning, or any versioned domain migration
+**And** destructive setup is forbidden unless `select current_database()` returns exactly `paynest_test`.
 
 ### Story 1.2: Persist Users and Their One-to-One Wallets
 
@@ -548,7 +549,7 @@ So that later Transfer operations can produce a reliable history without introdu
 **Given** a valid Transaction
 **When** it is persisted and loaded through `TransactionRepository`
 **Then** its exact amount and participant references are preserved
-**And** persistence tests execute against Testcontainers PostgreSQL.
+**And** persistence tests execute against the dedicated `paynest_test` PostgreSQL database.
 
 **Given** the MVP domain boundary
 **When** the persistence model is inspected
@@ -845,7 +846,7 @@ So that I can review its receipt details without exposing unrelated activity.
 
 ## Epic 4: Documented and Reproducible MVP Delivery
 
-The learner/developer can discover all seven PayNest operations through accurate OpenAPI documentation and run the completed modular monolith reproducibly against PostgreSQL, with stable errors, safe configuration, final integration evidence, and minimal Docker delivery.
+The learner/developer can discover all seven PayNest operations through accurate OpenAPI documentation and run the completed modular monolith reproducibly against developer-managed PostgreSQL, with stable errors, safe configuration, final integration evidence, and direct local delivery.
 
 ### Story 4.1: Finalize Safe Errors, Logging, and Configuration
 
@@ -881,7 +882,7 @@ So that I can understand problems without exposing credentials or internal imple
 **And** full sensitive request payloads and secrets are excluded
 **And** no correlation-ID platform, distributed tracing system, metrics platform, or complex observability dependency is introduced.
 
-**Given** local, test, or Compose runtime configuration
+**Given** local or test runtime configuration
 **When** environment-specific settings are supplied
 **Then** database URL, username, password, JWT secret, token lifetime, and lock timeout are externally configurable
 **And** committed configuration contains only safe defaults or obvious non-secret placeholders
@@ -947,40 +948,21 @@ So that I can understand, authenticate against, and test the backend without rea
 **And** verifies the bearer scheme, public/protected distinction, validation metadata, shared error schema, and expected success statuses
 **And** fails if an undocumented product endpoint is added.
 
-### Story 4.3: Run PayNest Reproducibly with Docker Compose
+### Story 4.3: Document and Verify Direct Local Startup
 
 As a PayNest developer,
-I want to start the completed application and PostgreSQL through Docker Compose,
-So that I can reproduce the documented backend journey without manually assembling its runtime environment.
+I want to start the completed application directly against developer-managed PostgreSQL,
+So that I can reproduce the documented backend journey with explicit, safe local prerequisites.
 
 **Acceptance Criteria:**
 
-**Given** the application, PostgreSQL integration tests, concurrency tests, error contracts, and OpenAPI verification are complete
-**When** containerization work begins
-**Then** Docker is added as the final delivery stage
-**And** it does not replace or block direct local application development.
-
-**Given** the application Dockerfile
-**When** an image is built
-**Then** a Java 25 build stage uses the Maven Wrapper to produce the application artifact
-**And** a Java 25 runtime stage contains only the runnable application and required runtime files
-**And** it runs as a non-root application user where supported by the selected base image
-**And** database credentials and JWT signing material are not baked into any image layer.
-
-**Given** the Docker Compose definition
-**When** its services are inspected
-**Then** it contains only `paynest-app` and `postgres`
-**And** PostgreSQL uses the pinned 18.6 image line, a development volume, and a `pg_isready` health check
-**And** the application waits for healthy PostgreSQL and receives database and JWT settings through environment interpolation.
-
-**Given** a clean Docker environment with required non-secret local configuration
-**When** `docker compose up` runs
-**Then** PostgreSQL becomes healthy
-**And** the single PayNest application starts
+**Given** Java 25, the Maven Wrapper, PostgreSQL 18.6, and required non-secret local configuration
+**When** the application starts directly with the local profile against a clean `paynest` database
+**Then** the single PayNest application starts
 **And** Flyway applies the versioned migrations
 **And** Hibernate validates the resulting schema.
 
-**Given** the running Compose environment
+**Given** the running local application
 **When** the documented smoke journey is followed
 **Then** a User can register, sign in, retrieve their profile and Wallet, receive local fixture funding, complete a Transfer, and retrieve Transaction history and detail
 **And** fixture funding uses only the documented manual local SQL mechanism
@@ -988,17 +970,17 @@ So that I can reproduce the documented backend journey without manually assembli
 
 **Given** repository setup documentation
 **When** a new learner follows it
-**Then** it identifies prerequisites, required environment variables, direct local startup, test execution, Docker startup, fixture funding, OpenAPI access, and shutdown steps
+**Then** it identifies prerequisites, development and dedicated test database creation, required environment variables, direct local startup, test execution, fixture funding, OpenAPI access, and shutdown steps
 **And** a sample environment file contains only obvious placeholders
 **And** real `.env` files remain excluded from source control.
 
-**Given** the complete containerized system
-**When** its deployment topology is inspected
-**Then** it remains one Spring Boot deployment and one PostgreSQL database
-**And** it contains no Kafka, Redis, gateway, discovery server, tracing collector, separate service database, Kubernetes resource, or distributed transaction component.
+**Given** the dedicated integration-test configuration
+**When** the complete Maven suite runs
+**Then** it connects to the developer-managed database named exactly `paynest_test`
+**And** database-name safety checks run before cleanup or schema reset
+**And** PostgreSQL-specific migration, constraint, transaction, rollback, security, HTTP, and concurrency evidence does not use H2 or containers.
 
-**Given** a clean Compose smoke test
-**When** the environment is built and started from scratch
-**Then** migration and application startup complete successfully
-**And** the documented health and API checks pass
-**And** shutdown does not require deleting or modifying unrelated local data.
+**Given** the active build, source, configuration, and delivery artifacts
+**When** their dependencies and runtime requirements are inspected
+**Then** no Docker, Compose, Testcontainers, service-connection, image, or container dependency remains
+**And** the system remains one Spring Boot deployment and one runtime PostgreSQL database with no added infrastructure.

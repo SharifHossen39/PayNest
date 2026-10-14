@@ -16,13 +16,13 @@ context:
 
 **Problem:** PayNest has finalized requirements and architecture but no application source, build, configuration, or tests. Later stories need a repeatable Spring Boot and PostgreSQL foundation that proves the selected stack works without prematurely introducing domain persistence.
 
-**Approach:** Create one Java 25/Spring Boot 4.1.1 Maven application under `com.paynest`, configure PostgreSQL, Flyway, Hibernate validation, and safe externalized settings, then prove startup against PostgreSQL 18.6 with a Testcontainers smoke test.
+**Approach:** Create one Java 25/Spring Boot 4.1.1 Maven application under `com.paynest`, configure PostgreSQL, Flyway, Hibernate validation, and safe externalized settings, then prove startup against PostgreSQL 18.6 using a dedicated developer-managed `paynest_test` database.
 
 ## Boundaries & Constraints
 
-**Always:** Use the Maven 3.10.0 Wrapper; retain one Spring Boot deployment unit and one PostgreSQL datasource; establish `auth`, `user`, `wallet`, `transfer`, `transaction`, and `common` package boundaries; let the Spring Boot BOM manage supported library versions; configure Flyway and Hibernate for the same PostgreSQL schema; use `ddl-auto=validate`; use Testcontainers PostgreSQL with Spring Boot `@ServiceConnection`; keep committed configuration free of real credentials and signing secrets.
+**Always:** Use the Maven 3.10.0 Wrapper; retain one Spring Boot deployment unit and one runtime PostgreSQL datasource; establish `auth`, `user`, `wallet`, `transfer`, `transaction`, and `common` package boundaries; let the Spring Boot BOM manage supported library versions; configure Flyway and Hibernate for the same PostgreSQL schema; use `ddl-auto=validate`; use a dedicated developer-managed `paynest_test` database for integration tests and guard destructive setup by exact database name; keep committed configuration free of real credentials and signing secrets.
 
-**Never:** Add entities, repositories, controllers, product endpoints, or versioned domain migrations; create User, Wallet, or Transaction tables; use H2; add Docker delivery files early; introduce Lombok, MapStruct, Modulith, Actuator, messaging, caching, cloud, resilience, microservice, or code-generation infrastructure.
+**Never:** Add entities, repositories, controllers, product endpoints, or versioned domain migrations; create User, Wallet, or Transaction tables; use H2 or container tooling; introduce Lombok, MapStruct, Modulith, Actuator, messaging, caching, cloud, resilience, microservice, or code-generation infrastructure.
 
 ## I/O & Edge-Case Matrix
 
@@ -30,7 +30,7 @@ context:
 |----------|---------------|----------------------------|----------------|
 | Clean build | Java 25 and a clean checkout | Maven Wrapper compiles the single application and runs tests | Build fails clearly if the required JDK is unavailable |
 | Empty database startup | Empty PostgreSQL 18.6 database | Flyway initializes its history, Hibernate validates an empty domain model, and the application context starts | Connection or configuration failures fail startup without leaking secrets |
-| Integration smoke test | Docker-capable test environment | Testcontainers supplies PostgreSQL through `@ServiceConnection`; no H2 or manual dynamic datasource wiring is used | Test fails if PostgreSQL, Flyway, or JPA initialization fails |
+| Integration smoke test | `PAYNEST_TEST_DB_*` identifies the dedicated `paynest_test` database | Spring connects directly to real PostgreSQL; no H2 or container provisioning is used | Test fails clearly if configuration, PostgreSQL, Flyway, JPA, or the database-name guard fails |
 
 </frozen-after-approval>
 
@@ -44,7 +44,7 @@ context:
 - `src/main/resources/application-local.yml` — local-only non-secret defaults/placeholders; must not contain usable production credentials.
 - `src/main/resources/db/migration/.gitkeep` — retains the migration location without consuming a Flyway version or creating a domain table.
 - `src/test/java/com/paynest/PayNestApplicationTests.java` — PostgreSQL-backed application-context smoke test.
-- `src/test/resources/application-test.yml` — isolated test settings compatible with `@ServiceConnection`.
+- `src/test/resources/application-test.yml` — isolated datasource settings bound from `PAYNEST_TEST_DB_*`.
 - `_bmad-output/implementation-artifacts/epic-1-context.md` — authoritative distilled Epic 1 constraints; do not modify while implementing this story.
 
 ## Tasks & Acceptance
@@ -53,14 +53,14 @@ context:
 - [x] `pom.xml`, `.mvn/wrapper/maven-wrapper.properties`, `mvnw`, `mvnw.cmd` — establish the Java 25, Spring Boot 4.1.1, and Maven 3.10.0 build with exactly the approved compile/runtime/test dependencies.
 - [x] `src/main/java/com/paynest/PayNestApplication.java`, feature `package-info.java` files — create one runnable application and the six package-by-feature seams.
 - [x] `src/main/resources/application.yml`, `application-local.yml`, `db/migration/.gitkeep` — configure externalized PostgreSQL/Flyway/JPA settings with no domain migration or real secret.
-- [x] `src/test/java/com/paynest/PayNestApplicationTests.java`, `src/test/resources/application-test.yml` — add a real PostgreSQL 18.6 context-start test using Testcontainers and `@ServiceConnection`.
+- [x] `src/test/java/com/paynest/PayNestApplicationTests.java`, `src/test/resources/application-test.yml` — add a real PostgreSQL 18.6 context-start test using the guarded dedicated `paynest_test` datasource.
 
 **Acceptance Criteria:**
 - Given Java 25 and a clean checkout, when the Maven Wrapper tests run, then the single Spring Boot 4.1.1 application under `com.paynest` compiles and starts with all six feature packages present.
 - Given an empty PostgreSQL 18.6 database, when the context starts, then Flyway initializes before Hibernate, both target the same schema, Hibernate validates rather than mutates it, and no PayNest domain table or versioned migration exists.
 - Given the effective Maven model, when dependencies are inspected, then only the approved Spring Web MVC, Validation, Data JPA, Security, Flyway/PostgreSQL, JJWT, springdoc, and test dependencies are present with BOM-managed versions where available.
 - Given committed local and test configuration, when it is inspected, then all sensitive values come from environment variables or obvious non-secret placeholders and no real credential or JWT secret is present.
-- Given the persistence smoke test, when it executes in a Docker-capable environment, then Spring Boot service-connection support starts PostgreSQL and the test passes without H2 or manual datasource property injection.
+- Given the persistence smoke test, when it executes with `PAYNEST_TEST_DB_*` configured for `paynest_test`, then Spring Boot connects directly to PostgreSQL and the test passes without H2 or container provisioning.
 
 ## Implementation Notes
 
@@ -73,7 +73,11 @@ context:
 
 ## Spec Change Log
 
+- 2026-10-12: Replaced normative container-test guidance with the guarded dedicated `paynest_test` strategy. All earlier container execution and review references are retained solely as truthful historical, non-authoritative evidence.
+
 ## Review Triage Log
+
+Entries below predate the 2026-10-12 no-container course correction. References to container-based execution are retained as truthful historical review evidence only and are not current implementation guidance.
 
 | ID | Verdict | Evidence and route |
 |---|---|---|
@@ -109,6 +113,6 @@ Use `package-info.java` because empty directories do not survive source control.
 **Commands:**
 - `.\mvnw.cmd --version` — expected: Maven 3.10.0 running on Java 25.
 - `.\mvnw.cmd help:effective-pom` — expected: a successful model containing only approved dependencies and managed versions.
-- `.\mvnw.cmd test` — expected: unit/build checks and the PostgreSQL Testcontainers context smoke test pass.
+- `.\mvnw.cmd test` — expected: unit/build checks and the guarded dedicated-PostgreSQL context smoke test pass.
 
-**Environment note:** The Windows host still reports Java 21. Docker Desktop was started, and the complete Wrapper test ran successfully inside an Eclipse Temurin Java 25 container against PostgreSQL 18.6.
+**Historical environment note (superseded, non-authoritative):** The Windows host still reports Java 21. Docker Desktop was started, and the complete Wrapper test ran successfully inside an Eclipse Temurin Java 25 container against PostgreSQL 18.6.

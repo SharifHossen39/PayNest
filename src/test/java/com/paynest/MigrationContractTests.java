@@ -5,21 +5,29 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
+import com.paynest.support.TestDatabaseSupport;
+
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
 class MigrationContractTests {
 
-    @Container
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18.6");
+    private final String jdbcUrl =
+            TestDatabaseSupport.requiredEnvironmentVariable("PAYNEST_TEST_DB_URL");
+    private final String username =
+            TestDatabaseSupport.requiredEnvironmentVariable("PAYNEST_TEST_DB_USERNAME");
+    private final String password =
+            TestDatabaseSupport.requiredEnvironmentVariable("PAYNEST_TEST_DB_PASSWORD");
+
+    @BeforeEach
+    void resetOwnedSchemaAfterSafetyCheck() {
+        TestDatabaseSupport.resetPayNestSchema(jdbcTemplate());
+    }
 
     @Test
     void migratesToV1ThenUpgradesWithoutChangingItsChecksumOrCatalogContract() {
@@ -97,7 +105,7 @@ class MigrationContractTests {
 
     private Flyway flyway(String location, String target) {
         return Flyway.configure()
-                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .dataSource(jdbcUrl, username, password)
                 .schemas("paynest")
                 .defaultSchema("paynest")
                 .locations(location)
@@ -108,7 +116,7 @@ class MigrationContractTests {
 
     private JdbcTemplate jdbcTemplate() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+                jdbcUrl, username, password);
         return new JdbcTemplate(dataSource);
     }
 

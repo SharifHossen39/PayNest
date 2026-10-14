@@ -51,7 +51,7 @@ context:
 **Execution:**
 - [x] `wallet/api/WalletController.java`, `wallet/application/WalletQueryService.java` — implement the ID-only current-Wallet query using the existing repository and DTO.
 - [x] `auth/security/SecurityConfig.java` — narrowly protect exact GET `/api/wallet` with the established bearer-error contract.
-- [x] `wallet/CurrentWalletHttpIntegrationTests.java` — cover every matrix row against Testcontainers PostgreSQL and assert safe, exact response envelopes and no writes.
+- [x] `wallet/CurrentWalletHttpIntegrationTests.java` — cover every matrix row against the guarded dedicated `paynest_test` PostgreSQL database and assert safe, exact response envelopes and no writes.
 
 **Acceptance Criteria:**
 - Given valid tokens for Users A and B, when each requests `GET /api/wallet`, then each receives only their own exact three-field Wallet response and neither request changes persisted User or Wallet data.
@@ -67,6 +67,8 @@ context:
 - Post-review Java 25.0.4.1/PostgreSQL 18.6 verification passed unchanged: 81 tests, 0 failures, errors, or skips; no review item was deferred.
 
 ## Spec Change Log
+
+- 2026-10-12: Replaced the container-test requirement with guarded dedicated-PostgreSQL integration coverage.
 
 ## Review Triage Log
 

@@ -20,7 +20,7 @@ context:
 
 ## Boundaries & Constraints
 
-**Always:** Flyway owns append-only DDL and Hibernate remains `validate`; use generated `Long`/`BIGINT` IDs, `Instant`/`TIMESTAMPTZ`, and `BigDecimal`/`NUMERIC(19,2)`; normalize email by trim plus `Locale.ROOT` lowercase; trim names; persist only password hashes; create Wallets as `0.00 USD`; name and verify all specified constraints; keep Wallet→User lazy, required, unidirectional, and free of cascade/orphan removal; prove PostgreSQL behavior with Testcontainers.
+**Always:** Flyway owns append-only DDL and Hibernate remains `validate`; use generated `Long`/`BIGINT` IDs, `Instant`/`TIMESTAMPTZ`, and `BigDecimal`/`NUMERIC(19,2)`; normalize email by trim plus `Locale.ROOT` lowercase; trim names; persist only password hashes; create Wallets as `0.00 USD`; name and verify all specified constraints; keep Wallet→User lazy, required, unidirectional, and free of cascade/orphan removal; prove PostgreSQL behavior with the guarded dedicated `paynest_test` database.
 
 **Never:** Add endpoints, DTOs, registration/password encoding, Transaction persistence, public funding, an inverse `User.wallet`, transaction collections, general public setters, plaintext passwords, floating-point money, silent rounding, H2, or speculative service/abstraction layers.
 
@@ -107,5 +107,5 @@ Schema contract: `users(id BIGINT identity, name VARCHAR(100), email VARCHAR(254
 ## Verification
 
 **Commands:**
-- `./mvnw test` — expected: unit tests and PostgreSQL 18.6 Testcontainers integration tests pass on Java 25; Flyway validates V1→V2 and Hibernate validates the final schema.
+- `./mvnw test` — expected: unit tests and PostgreSQL 18.6 integration tests pass on Java 25 against the guarded dedicated `paynest_test` database; Flyway validates V1→V2 and Hibernate validates the final schema.
 - `./mvnw help:effective-pom` — expected: the existing approved dependency set remains unchanged; Story 1.2 adds no library.

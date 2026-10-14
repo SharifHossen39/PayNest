@@ -2,6 +2,10 @@ spring:
   config:
     activate:
       on-profile: test
+  datasource:
+    url: ${PAYNEST_TEST_DB_URL}
+    username: ${PAYNEST_TEST_DB_USERNAME}
+    password: ${PAYNEST_TEST_DB_PASSWORD}
 
 paynest:
   jwt:

@@ -86,13 +86,14 @@ The final MVP must satisfy every PRD acceptance criterion, but the learner does 
 | `@Transactional` and ACID | Required | Early |
 | Spring Security and JWT | Required | Early |
 | Flyway | Required | Intermediate |
-| Testcontainers persistence tests | Required | Intermediate |
+| Dedicated PostgreSQL persistence tests | Required | Intermediate |
 | Pessimistic Wallet locking | Required for final Transfer correctness | Advanced hardening |
 | Deterministic lock ordering | Required for final Transfer correctness | Advanced hardening |
 | Concurrency and lock-timeout tests | Required before final acceptance | Advanced hardening |
 | Query-count/N+1 verification | Required before final hardening | Advanced hardening |
 | OpenAPI | Required | Later |
-| Docker/Compose | Required final delivery phase | Later |
+| Direct local startup verification | Required final delivery phase | Later |
+| Container-based tooling | Not MVP | Excluded |
 | Kafka, Redis/cache, microservices, saga/outbox | Not MVP | Future learning only |
 
 Use these labels throughout this design:
@@ -116,18 +117,18 @@ Versions were verified against primary project documentation on 2026-10-06. Patc
 | Language | Java 25 LTS | Current Java LTS; records and modern language features are useful for DTOs while the domain remains conventional Java. |
 | Framework | Spring Boot 4.1.1 | Current stable Spring Boot line and one coherent dependency BOM. |
 | Build | Maven Wrapper using Maven 3.10.0 | Current Maven 3 GA and repeatable learner setup without requiring a global Maven version. |
-| Database | PostgreSQL 18.6 | Current supported PostgreSQL major/patch for local, test, and Compose environments. |
+| Database | PostgreSQL 18.6 | Current supported PostgreSQL major/patch for developer-managed local and dedicated test environments. |
 | Persistence | Spring Data JPA and Boot-managed Hibernate | Directly supports the PRD's JPA relationship and transaction learning goals. |
 | Migrations | Boot-managed Flyway 12.4.0 | One versioned SQL schema workflow aligned with the chosen Boot BOM. |
 | JDBC driver | Boot-managed PostgreSQL JDBC 42.7.13 | Compatible driver supplied by the Boot dependency set. |
 | JWT | JJWT 0.13.0 | Focused JWT creation and validation without introducing an authorization server. |
 | API docs | springdoc-openapi 3.1.1 | Current security-fix patch with Spring Boot 4.1 support. |
 | Test framework | Boot-managed JUnit Jupiter 6.0.3 | Default modern test foundation. |
-| Database tests | Boot-managed Testcontainers 2.0.5 | Runs the real PostgreSQL engine for mappings, constraints, transactions, and locks. |
+| Database tests | Dedicated developer-managed `paynest_test` PostgreSQL database | Runs the real PostgreSQL engine for mappings, constraints, transactions, and locks without container tooling. |
 
-Primary references: [Spring Boot project](https://spring.io/projects/spring-boot), [Spring Boot dependency coordinates](https://docs.spring.io/spring-boot/appendix/dependency-versions/coordinates.html), [Oracle Java support roadmap](https://www.oracle.com/java/technologies/java-se-support-roadmap.html), [PostgreSQL versioning policy](https://www.postgresql.org/support/versioning/), [Apache Maven releases](https://maven.apache.org/docs/history.html), [JJWT releases](https://github.com/jwtk/jjwt/releases), [springdoc releases](https://github.com/springdoc/springdoc-openapi/releases), and [Testcontainers releases](https://github.com/testcontainers/testcontainers-java/releases).
+Primary references: [Spring Boot project](https://spring.io/projects/spring-boot), [Spring Boot dependency coordinates](https://docs.spring.io/spring-boot/appendix/dependency-versions/coordinates.html), [Oracle Java support roadmap](https://www.oracle.com/java/technologies/java-se-support-roadmap.html), [PostgreSQL versioning policy](https://www.postgresql.org/support/versioning/), [Apache Maven releases](https://maven.apache.org/docs/history.html), [JJWT releases](https://github.com/jwtk/jjwt/releases), and [springdoc releases](https://github.com/springdoc/springdoc-openapi/releases).
 
-The project should inherit versions from Spring Boot wherever possible. Do not override Hibernate, Flyway, PostgreSQL JDBC, JUnit, or Testcontainers merely to obtain a newer number; the managed set is the compatibility baseline.
+The project should inherit versions from Spring Boot wherever possible. Do not override Hibernate, Flyway, PostgreSQL JDBC, or JUnit merely to obtain a newer number; the managed set is the compatibility baseline.
 
 ### 2.1 Maven dependency set
 
@@ -140,9 +141,9 @@ Keep the `pom.xml` limited to dependencies that implement a stated requirement. 
 | JWT compile | `io.jsonwebtoken:jjwt-api:0.13.0` |
 | JWT runtime | `io.jsonwebtoken:jjwt-impl:0.13.0`, `io.jsonwebtoken:jjwt-jackson:0.13.0` |
 | OpenAPI compile | `org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1` |
-| Test | `org.springframework.boot:spring-boot-starter-test`, `spring-boot-testcontainers`, `org.springframework.security:spring-security-test`, `org.testcontainers:testcontainers-junit-jupiter`, `org.testcontainers:testcontainers-postgresql` |
+| Test | `org.springframework.boot:spring-boot-starter-test`, `org.springframework.security:spring-security-test` |
 
-Testcontainers 2.x uses `org.testcontainers.postgresql.PostgreSQLContainer`; do not copy pre-2.x imports/artifact names. Use Spring Boot `@ServiceConnection` with `spring-boot-testcontainers`; this is the selected datasource wiring path rather than manual dynamic properties.
+Integration tests bind `spring.datasource.*` from `PAYNEST_TEST_DB_URL`, `PAYNEST_TEST_DB_USERNAME`, and `PAYNEST_TEST_DB_PASSWORD`. They must connect to the dedicated `paynest_test` database and run a test-only name guard before any row cleanup or schema reset. H2 and embedded database substitutes remain prohibited for PostgreSQL evidence.
 
 Do not add Lombok, MapStruct, Spring Modulith, Actuator, Resilience4j, cache, messaging, cloud, or code-generation dependencies unless a later concrete requirement justifies them. Plain Java keeps the learning mechanics visible.
 
@@ -709,7 +710,7 @@ The history query filters `sender_wallet_id = :walletId OR receiver_wallet_id = 
 - `V2__create_wallets.sql` is introduced with the Wallet mapping and contains the `wallets` table, User foreign key, unique constraint, and Wallet checks.
 - `V3__create_transactions.sql` is introduced with the Transaction mapping and contains the `transactions` table, foreign keys, checks, and both history indexes.
 - Later schema changes append new versioned files; do not edit an already-shared migration.
-- Run Flyway at application startup in local/test/Compose profiles.
+- Run Flyway at application startup in local and test profiles.
 - Set Hibernate schema mode to `validate`; schema generation/update is not the normal workflow.
 - Keep product fixture data out of versioned production migrations.
 
@@ -722,6 +723,9 @@ The history query filters `sender_wallet_id = :walletId OR receiver_wallet_id = 
 | JDBC URL | `PAYNEST_DB_URL` |
 | DB user | `PAYNEST_DB_USERNAME` |
 | DB password | `PAYNEST_DB_PASSWORD` |
+| Test JDBC URL | `PAYNEST_TEST_DB_URL` |
+| Test DB user | `PAYNEST_TEST_DB_USERNAME` |
+| Test DB password | `PAYNEST_TEST_DB_PASSWORD` |
 | JWT secret | `PAYNEST_JWT_SECRET` |
 | JWT lifetime | `PAYNEST_JWT_TTL` |
 | PostgreSQL row-lock wait | `PAYNEST_DB_LOCK_TIMEOUT` (default local/test `5s`) |
@@ -738,7 +742,7 @@ Any helper must be unavailable from the production application classpath/profile
 
 ## 12. Testing architecture
 
-Testing grows with the implementation. Testcontainers is the required PostgreSQL integration approach, but advanced concurrency machinery should not delay the first business flow.
+Testing grows with the implementation. A dedicated developer-managed `paynest_test` database is the required PostgreSQL integration approach, but advanced concurrency machinery should not delay the first business flow.
 
 ### 12.1 Essential early tests
 
@@ -755,7 +759,7 @@ Add these alongside the corresponding feature:
 - sent/received history, pagination basics, participant detail, and unrelated detail `404`;
 - registration and Transfer rollback at the business transaction boundary.
 
-Use fast JUnit tests for pure Wallet arithmetic, normalization, direction mapping, and small business decisions. Use `@SpringBootTest` with MockMvc and Testcontainers PostgreSQL for HTTP, Spring Security, JPA mappings, Flyway, transactions, and repository queries. Do not use H2 where PostgreSQL behavior matters.
+Use fast JUnit tests for pure Wallet arithmetic, normalization, direction mapping, and small business decisions. Use `@SpringBootTest` with MockMvc and the dedicated PostgreSQL test database for HTTP, Spring Security, JPA mappings, Flyway, transactions, and repository queries. Do not use H2 where PostgreSQL behavior matters.
 
 ### 12.2 Advanced hardening tests
 
@@ -775,7 +779,7 @@ Concurrency tests must run calls in separate threads, transactions, and database
 
 ### 12.3 Test data and cleanup
 
-Use `@Sql`, test-only repository/JDBC fixtures, or isolated setup helpers to fund Wallets. Prefer explicit cleanup between integration cases or an isolated container/database lifecycle. Generated ID values are not part of assertions. None of this creates a production funding path.
+Use `@Sql`, test-only repository/JDBC fixtures, or isolated setup helpers to fund Wallets. Prefer explicit cleanup between integration cases inside the dedicated test database. Before any cleanup or schema reset, execute `select current_database()` and require exactly `paynest_test`; abort without mutation otherwise. Generated ID values are not part of assertions. None of this creates a production funding path.
 
 ## 13. OpenAPI design
 
@@ -789,44 +793,17 @@ Use springdoc-openapi to generate one API description from the seven controllers
 - Group operations as Authentication, User, Wallet, and Transactions. The Transfer endpoint remains under Wallet to match the public API even though its implementation has a focused transfer slice.
 - Add an automated integration assertion that the generated document contains exactly the seven MVP paths; Swagger UI resources are documentation assets, not extra product APIs.
 
-## 14. Docker and local delivery
+## 14. Direct local delivery
 
-Docker is implemented after the application works directly and the important behavior is verified:
-
-```text
-Application -> Tests -> Concurrency hardening -> OpenAPI -> Docker
-```
-
-Docker must not block early feature development.
+The completed application runs directly as one Spring Boot process against a developer-managed PostgreSQL server:
 
 ```text
-docker compose
-|-- paynest-app
-|   |-- one Spring Boot jar/container
-|   `-- depends on healthy postgres
-`-- postgres
-    |-- postgres:18.6-alpine
-    `-- named development volume
+Application -> Tests -> Concurrency hardening -> OpenAPI -> Direct local verification
 ```
 
-### 14.1 Application image
+Document PostgreSQL 18.6, Java 25, the Maven Wrapper, creation of separate `paynest` and `paynest_test` databases, required environment variables, direct startup, test execution, fixture funding, OpenAPI access, and orderly shutdown. Flyway must migrate the clean local database at startup and Hibernate must validate the resulting schema. Docker, Compose, Testcontainers, images, and other container-based tooling are outside the project.
 
-Use a simple multi-stage Dockerfile:
-
-1. Build with the Maven Wrapper and a Java 25 JDK image.
-2. Copy only the runnable jar into a Java 25 JRE image such as the verified Eclipse Temurin 25 minimal runtime.
-3. Run as a non-root application user where the selected base image permits it.
-4. Expose the application port as documentation; Compose maps it for local use.
-
-Do not bake database credentials or JWT material into the image.
-
-### 14.2 Compose behavior
-
-- PostgreSQL uses database/user/password environment values and a health check based on `pg_isready`.
-- The application receives its JDBC and JWT configuration from Compose environment interpolation.
-- Flyway runs inside the application at startup.
-- Compose contains no Kafka, Redis, gateway, discovery server, tracing collector, or Kubernetes-related component.
-- No public Wallet-funding service or route is added for Docker demonstrations; use the documented local SQL fixture.
+No public Wallet-funding service or route is added for demonstrations; use the documented local SQL fixture.
 
 ## 15. Architecture decisions
 
@@ -886,12 +863,12 @@ Do not bake database credentials or JWT material into the image.
 - **Alternatives:** One upfront migration for the complete schema; `ddl-auto=update`; Liquibase.
 - **Rejected because:** The upfront schema weakens story independence; automatic update is not a reliable shared workflow; Liquibase is capable but adds no advantage for this small SQL-oriented schema.
 
-### ADR-9 - Testcontainers PostgreSQL integration tests
+### ADR-9 - Dedicated developer-managed PostgreSQL integration database
 
-- **Decision:** Real PostgreSQL containers for persistence, rollback, and concurrency integration tests.
-- **Why:** The most important risks are engine-specific constraints and lock semantics.
-- **Alternatives:** H2; mocks only; a manually shared developer database.
-- **Rejected because:** They either cannot prove behavior or make tests unreliable and environment-dependent.
+- **Decision:** Run persistence, rollback, and concurrency integration tests against a dedicated developer-managed PostgreSQL database named exactly `paynest_test`, configured by `PAYNEST_TEST_DB_*` environment variables.
+- **Why:** The most important risks are engine-specific constraints and lock semantics, while the approved project direction excludes container tooling. An exact database-name guard prevents destructive setup from targeting normal development data.
+- **Alternatives:** H2; mocks only; container-provisioned PostgreSQL; reuse of the normal `paynest` development database.
+- **Rejected because:** H2 and mocks cannot prove PostgreSQL behavior; container provisioning is outside scope; sharing the development database creates unacceptable cleanup risk.
 
 ### ADR-10 - Explicit DTOs and manual mapping
 
@@ -933,7 +910,7 @@ Features should be built in learning order, not document order. Tests are writte
 | Phase | Implement | Learn | Gate before moving on |
 |---:|---|---|---|
 | 1. Project foundation | Maven wrapper, Java/Boot baseline, package skeleton, basic config | application startup, dependency management, profiles | context starts and a smoke test passes |
-| 2. PostgreSQL + Flyway | datasource, Flyway/Testcontainers wiring, Hibernate `validate`; no domain tables yet | SQL ownership and migration lifecycle | a clean database connects without application-generated schema |
+| 2. PostgreSQL + Flyway | local/test datasources, Flyway wiring, Hibernate `validate`; no domain tables yet | SQL ownership and migration lifecycle | clean development and dedicated test databases connect without application-generated schema |
 | 3. User entity | `V1` users migration, User mapping/repository, normalization, timestamps | entity lifecycle, identity IDs, uniqueness | migration, persist/load, and normalized-email tests pass |
 | 4. Wallet entity + 1:1 | `V2` wallets migration, unidirectional Wallet-to-User mapping and balance methods | `@OneToOne`, owning side, BigDecimal | migration, unique Wallet, and non-negative balance rules pass |
 | 5. Registration + atomic Wallet | signup DTO/controller, PBKDF2, User+Wallet transaction | validation and first `@Transactional` business boundary | success, duplicate, and Wallet-failure rollback pass |
@@ -945,17 +922,17 @@ Features should be built in learning order, not document order. Tests are writte
 | 11. Transaction and rollback deepening | verify Transfer transaction boundary and forced mid-operation failure | ACID, propagation, rollback semantics | debit/credit/record always commit or roll back together |
 | 12. Concurrency problem | reproduce or trace a competing-overspend race | lost updates and race conditions | a concurrent test or documented trace demonstrates the failure mode |
 | 13. Pessimistic locking and Transfer API | ordered `PESSIMISTIC_WRITE` query, `TransferController`, PRD response | row locks, isolation, deterministic ordering | endpoint success creates one record and competing operations cannot overspend |
-| 14. Concurrency hardening tests | overspend, opposite direction, lock timeout, PostgreSQL constraints | real multi-transaction testing and deadlock reduction | advanced Testcontainers suite passes repeatedly |
+| 14. Concurrency hardening tests | overspend, opposite direction, lock timeout, PostgreSQL constraints | real multi-transaction testing and deadlock reduction | advanced dedicated-PostgreSQL suite passes repeatedly |
 | 15. History and detail | participant queries, direction, pagination, ownership check | joins, DTO projection, secure object access | sent/received, page metadata, and unrelated `404` pass |
 | 16. Exception/error hardening | `GlobalExceptionHandler`, security writers, exact PRD codes | stable safe REST failures | contract tests pass and no internals leak |
 | 17. OpenAPI | seven operations, schemas, bearer scheme, errors | API contract documentation | generated spec contains exactly seven product paths |
-| 18. Docker | multi-stage image and app+PostgreSQL Compose | containers and external configuration | clean Compose start migrates and serves the monolith |
+| 18. Direct local verification | prerequisites, environment, development/test databases, startup and smoke journey | external configuration and repeatable local operations | clean direct startup migrates, validates, and serves the monolith |
 
 ## 18. MVP Definition of Done and consistency check
 
 | Constraint | Architecture result |
 |---|---|
-| One Spring Boot application | Yes - one `PayNestApplication` and deployable jar/image |
+| One Spring Boot application | Yes - one `PayNestApplication` and deployable jar |
 | One PostgreSQL database | Yes - one datasource/schema/database |
 | Exactly three persisted domain entities | Yes - User, Wallet, Transaction |
 | Exactly seven MVP endpoints | Yes - mapped in Section 8; no additions |
@@ -992,7 +969,7 @@ No proposed architecture decision conflicts with the finalized PRD. If a later i
 - One package-by-feature Spring Boot modular monolith and one PostgreSQL database.
 - Exactly three persisted entities and seven MVP product endpoints.
 - User-Wallet one-to-one and Transaction-to-Wallet many-to-one mappings without large bidirectional collections.
-- Exact money, strong PostgreSQL constraints, Flyway, Hibernate validation, JWT security, DTO boundaries, atomic registration, atomic Transfer, pessimistic locking, ownership checks, OpenAPI, Testcontainers, and late Docker delivery.
+- Exact money, strong PostgreSQL constraints, Flyway, Hibernate validation, JWT security, DTO boundaries, atomic registration, atomic Transfer, pessimistic locking, ownership checks, OpenAPI, dedicated PostgreSQL testing, and direct local delivery.
 
 ### What was simplified
 
@@ -1006,7 +983,7 @@ No proposed architecture decision conflicts with the finalized PRD. If a later i
 
 - Pessimistic locking implementation follows the basic transactional transfer flow.
 - Deterministic lock ordering, lock timeout/SQLSTATE mapping, concurrent overspending tests, forced mid-transfer failure, exact PostgreSQL constraint tests, and N+1/query-count verification are advanced hardening steps completed before final acceptance.
-- OpenAPI and Docker remain later phases after application behavior, tests, and concurrency hardening.
+- OpenAPI and direct local verification remain later phases after application behavior, tests, and concurrency hardening.
 
 ### Remaining assumptions
 

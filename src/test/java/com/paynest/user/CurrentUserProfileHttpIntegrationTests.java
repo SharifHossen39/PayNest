@@ -14,6 +14,7 @@ import javax.crypto.SecretKey;
 
 import com.paynest.auth.api.SignInRequest;
 import com.paynest.auth.security.JwtService;
+import com.paynest.support.TestDatabaseSupport;
 import com.paynest.user.domain.User;
 import com.paynest.user.persistence.UserRepository;
 import com.paynest.wallet.domain.Wallet;
@@ -29,7 +30,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,9 +40,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,13 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {
-        "PAYNEST_DB_URL=jdbc:postgresql://placeholder.invalid:5432/paynest_test",
-        "PAYNEST_DB_USERNAME=safe-test-placeholder-user",
-        "PAYNEST_DB_PASSWORD=safe-test-placeholder-password"
-})
+@SpringBootTest
 @ActiveProfiles("test")
-@Testcontainers
 @ExtendWith(OutputCaptureExtension.class)
 class CurrentUserProfileHttpIntegrationTests {
 
@@ -67,10 +59,6 @@ class CurrentUserProfileHttpIntegrationTests {
             "dGVzdC1vbmx5LXBheW5lc3Qtand0LXNlY3JldC0zMmI=";
     private static final SecretKey TEST_KEY =
             Keys.hmacShaKeyFor(Base64.getDecoder().decode(TEST_SECRET));
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18.6");
 
     @Autowired
     private WebApplicationContext applicationContext;
@@ -103,8 +91,7 @@ class CurrentUserProfileHttpIntegrationTests {
         mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext)
                 .apply(springSecurity())
                 .build();
-        jdbcTemplate.update("delete from paynest.wallets");
-        jdbcTemplate.update("delete from paynest.users");
+        TestDatabaseSupport.cleanApplicationData(jdbcTemplate);
         SecurityContextHolder.clearContext();
     }
 
