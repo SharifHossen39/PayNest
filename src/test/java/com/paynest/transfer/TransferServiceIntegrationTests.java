@@ -85,14 +85,15 @@ class TransferServiceIntegrationTests {
         assertThat(row.get("status")).isEqualTo("COMPLETED");
 
         assertThat(response).isEqualTo(new TransferResponse(
-                ((Number) row.get("id")).longValue(),
-                "SENT",
-                recipient.getUser().getName(),
-                recipient.getUser().getEmail(),
-                new BigDecimal("150.00"),
-                "USD",
-                "COMPLETED",
-                ((Timestamp) row.get("created_at")).toInstant(),
+                new TransferResponse.TransactionDetails(
+                        ((Number) row.get("id")).longValue(),
+                        "SENT",
+                        new TransferResponse.Counterparty(
+                                recipient.getUser().getName(), recipient.getUser().getEmail()),
+                        new BigDecimal("150.00"),
+                        "USD",
+                        "COMPLETED",
+                        ((Timestamp) row.get("created_at")).toInstant()),
                 new BigDecimal("350.00")));
     }
 

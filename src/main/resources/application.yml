@@ -29,6 +29,8 @@ logging:
     org.hibernate.orm.jdbc.error: ERROR
 
 paynest:
+  database:
+    lock-timeout: ${PAYNEST_DB_LOCK_TIMEOUT:5s}
   jwt:
     secret: ${PAYNEST_JWT_SECRET}
     ttl: ${PAYNEST_JWT_TTL:60m}

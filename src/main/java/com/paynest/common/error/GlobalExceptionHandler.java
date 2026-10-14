@@ -1,11 +1,13 @@
 package com.paynest.common.error;
 
 import java.time.Clock;
+import java.sql.SQLException;
 import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,14 +22,23 @@ public class GlobalExceptionHandler {
         this.clock = clock;
     }
 
-    @ExceptionHandler({InvalidSignUpException.class, InvalidSignInException.class})
+    @ExceptionHandler({
+            InvalidSignUpException.class,
+            InvalidSignInException.class,
+            InvalidTransferException.class
+    })
     ResponseEntity<ApiError> handleValidation(
             RuntimeException exception,
             HttpServletRequest request
     ) {
-        Map<String, String> fieldErrors = exception instanceof InvalidSignUpException signUp
-                ? signUp.getFieldErrors()
-                : ((InvalidSignInException) exception).getFieldErrors();
+        Map<String, String> fieldErrors;
+        if (exception instanceof InvalidSignUpException signUp) {
+            fieldErrors = signUp.getFieldErrors();
+        } else if (exception instanceof InvalidSignInException signIn) {
+            fieldErrors = signIn.getFieldErrors();
+        } else {
+            fieldErrors = ((InvalidTransferException) exception).getFieldErrors();
+        }
         return errorResponse(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
@@ -76,6 +87,63 @@ public class GlobalExceptionHandler {
                 Map.of());
     }
 
+    @ExceptionHandler({UserNotFoundException.class, WalletNotFoundException.class})
+    ResponseEntity<ApiError> handleMissingTransferResource(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        boolean userMissing = exception instanceof UserNotFoundException;
+        return errorResponse(
+                HttpStatus.NOT_FOUND,
+                userMissing ? "USER_NOT_FOUND" : "WALLET_NOT_FOUND",
+                userMissing ? "User not found" : "Wallet not found",
+                request,
+                Map.of());
+    }
+
+    @ExceptionHandler({SelfTransferNotAllowedException.class, InsufficientBalanceException.class})
+    ResponseEntity<ApiError> handleTransferBusinessRule(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        boolean selfTransfer = exception instanceof SelfTransferNotAllowedException;
+        return errorResponse(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                selfTransfer ? "SELF_TRANSFER_NOT_ALLOWED" : "INSUFFICIENT_BALANCE",
+                selfTransfer ? "Transfer is not allowed" : "Insufficient balance",
+                request,
+                Map.of());
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    ResponseEntity<ApiError> handleTransferPersistenceFailure(
+            DataAccessException exception,
+            HttpServletRequest request
+    ) {
+        if (!isTransferRequest(request)) {
+            return errorResponse(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    "The request could not be completed",
+                    request,
+                    Map.of());
+        }
+        if (hasSqlState(exception, "40P01") || hasSqlState(exception, "55P03")) {
+            return errorResponse(
+                    HttpStatus.CONFLICT,
+                    "CONFLICT",
+                    "The transfer conflicted with another request",
+                    request,
+                    Map.of());
+        }
+        return errorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "TRANSACTION_FAILED",
+                "The transfer could not be completed",
+                request,
+                Map.of());
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> handleUnexpectedFailure(HttpServletRequest request) {
         return errorResponse(
@@ -101,5 +169,22 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 fieldErrors);
         return ResponseEntity.status(status).body(body);
+    }
+
+    private static boolean hasSqlState(Throwable failure, String expectedState) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof SQLException sqlException
+                    && expectedState.equals(sqlException.getSQLState())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isTransferRequest(HttpServletRequest request) {
+        return (request.getContextPath() + "/api/wallet/transfers")
+                .equals(request.getRequestURI());
     }
 }

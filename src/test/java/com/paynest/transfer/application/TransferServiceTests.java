@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -44,6 +45,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,11 +73,11 @@ class TransferServiceTests {
     }
 
     @Test
-    void transfersExactAmountAndMapsOnlyTheSafeCompletedResult() {
+    void locksBothWalletsOnceAndMapsRolesByUserIdRatherThanLockResultPosition() {
         User sender = user(1L, "Sender", "sender@example.com");
         User recipient = user(2L, "Recipient", "recipient@example.com");
-        Wallet senderWallet = wallet(11L, sender, "500.00");
-        Wallet recipientWallet = wallet(22L, recipient, "100.00");
+        Wallet senderWallet = wallet(22L, sender, "500.00");
+        Wallet recipientWallet = wallet(11L, recipient, "100.00");
         allowPartyResolution(sender, recipient, senderWallet, recipientWallet);
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
             Transaction transaction = invocation.getArgument(0);
@@ -90,16 +92,18 @@ class TransferServiceTests {
         assertThat(senderWallet.getBalance()).isEqualByComparingTo("350.00");
         assertThat(recipientWallet.getBalance()).isEqualByComparingTo("250.00");
         assertThat(response).isEqualTo(new TransferResponse(
-                41L,
-                "SENT",
-                "Recipient",
-                "recipient@example.com",
-                new BigDecimal("150.00"),
-                "USD",
-                "COMPLETED",
-                Instant.parse("2026-10-14T10:15:30.123456Z"),
+                new TransferResponse.TransactionDetails(
+                        41L,
+                        "SENT",
+                        new TransferResponse.Counterparty("Recipient", "recipient@example.com"),
+                        new BigDecimal("150.00"),
+                        "USD",
+                        "COMPLETED",
+                        Instant.parse("2026-10-14T10:15:30.123456Z")),
                 new BigDecimal("350.00")));
         verify(userRepository).findByEmail("recipient@example.com");
+        verify(walletRepository).findAllByUserIdsForUpdate(List.of(1L, 2L));
+        verifyNoMoreInteractions(walletRepository);
         verify(transactionRepository).save(any(Transaction.class));
     }
 
@@ -128,14 +132,14 @@ class TransferServiceTests {
         assertThat(persisted.getReceiverWallet()).isSameAs(recipientWallet);
         assertThat(persisted.getAmount()).isEqualByComparingTo(maximum);
         assertThat(response).isEqualTo(new TransferResponse(
-                42L,
-                "SENT",
-                "Recipient",
-                "recipient@example.com",
-                maximum,
-                "USD",
-                "COMPLETED",
-                Instant.parse("2026-10-14T10:15:30.123456Z"),
+                new TransferResponse.TransactionDetails(
+                        42L,
+                        "SENT",
+                        new TransferResponse.Counterparty("Recipient", "recipient@example.com"),
+                        maximum,
+                        "USD",
+                        "COMPLETED",
+                        Instant.parse("2026-10-14T10:15:30.123456Z")),
                 new BigDecimal("0.00")));
     }
 
@@ -229,14 +233,14 @@ class TransferServiceTests {
         User recipient = user(2L, "Recipient", "recipient@example.com");
         when(userRepository.findById(sender.getId())).thenReturn(Optional.of(sender));
         when(userRepository.findByEmail(recipient.getEmail())).thenReturn(Optional.of(recipient));
-        when(walletRepository.findByUserId(sender.getId())).thenReturn(Optional.empty());
+        when(walletRepository.findAllByUserIdsForUpdate(List.of(sender.getId(), recipient.getId())))
+                .thenReturn(List.of());
 
         assertThatThrownBy(() -> transferService.transfer(
                 sender.getId(),
                 new TransferRequest(recipient.getEmail(), new BigDecimal("1.00"))))
                 .isInstanceOf(WalletNotFoundException.class);
 
-        verify(walletRepository, never()).findByUserId(recipient.getId());
         verifyNoInteractions(transactionRepository);
     }
 
@@ -247,8 +251,8 @@ class TransferServiceTests {
         Wallet senderWallet = wallet(11L, sender, "500.00");
         when(userRepository.findById(sender.getId())).thenReturn(Optional.of(sender));
         when(userRepository.findByEmail(recipient.getEmail())).thenReturn(Optional.of(recipient));
-        when(walletRepository.findByUserId(sender.getId())).thenReturn(Optional.of(senderWallet));
-        when(walletRepository.findByUserId(recipient.getId())).thenReturn(Optional.empty());
+        when(walletRepository.findAllByUserIdsForUpdate(List.of(sender.getId(), recipient.getId())))
+                .thenReturn(List.of(senderWallet));
 
         assertThatThrownBy(() -> transferService.transfer(
                 sender.getId(),
@@ -372,8 +376,10 @@ class TransferServiceTests {
     ) {
         when(userRepository.findById(sender.getId())).thenReturn(Optional.of(sender));
         when(userRepository.findByEmail(recipient.getEmail())).thenReturn(Optional.of(recipient));
-        when(walletRepository.findByUserId(sender.getId())).thenReturn(Optional.of(senderWallet));
-        when(walletRepository.findByUserId(recipient.getId())).thenReturn(Optional.of(recipientWallet));
+        when(walletRepository.findAllByUserIdsForUpdate(List.of(sender.getId(), recipient.getId())))
+                .thenReturn(senderWallet.getId() < recipientWallet.getId()
+                        ? List.of(senderWallet, recipientWallet)
+                        : List.of(recipientWallet, senderWallet));
     }
 
     private static User user(Long id, String name, String email) {

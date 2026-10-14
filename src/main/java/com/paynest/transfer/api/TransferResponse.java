@@ -4,14 +4,21 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 public record TransferResponse(
-        Long transactionId,
-        String direction,
-        String recipientName,
-        String recipientEmail,
-        BigDecimal amount,
-        String currency,
-        String status,
-        Instant createdAt,
+        TransactionDetails transaction,
         BigDecimal balanceAfter
 ) {
+
+    public record TransactionDetails(
+            Long id,
+            String direction,
+            Counterparty counterparty,
+            BigDecimal amount,
+            String currency,
+            String status,
+            Instant createdAt
+    ) {
+    }
+
+    public record Counterparty(String name, String email) {
+    }
 }

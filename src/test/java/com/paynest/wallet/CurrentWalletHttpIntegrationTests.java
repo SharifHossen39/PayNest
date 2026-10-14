@@ -199,7 +199,8 @@ class CurrentWalletHttpIntegrationTests {
         assertForbidden(put("/api/wallet").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/wallet/").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/wallet/fund").header(HttpHeaders.AUTHORIZATION, authorization));
-        assertForbidden(post("/api/wallet/transfers").header(HttpHeaders.AUTHORIZATION, authorization));
+        assertForbidden(get("/api/wallet/transfers").header(HttpHeaders.AUTHORIZATION, authorization));
+        assertForbidden(put("/api/wallet/transfers").header(HttpHeaders.AUTHORIZATION, authorization));
         assertForbidden(get("/api/unlisted").header(HttpHeaders.AUTHORIZATION, authorization));
         assertMatrixParameterRejected(get("/api/wallet;owner=other")
                 .header(HttpHeaders.AUTHORIZATION, authorization));
@@ -210,14 +211,15 @@ class CurrentWalletHttpIntegrationTests {
         assertForbidden(put("/api/wallet"));
         assertForbidden(get("/api/wallet/"));
         assertForbidden(get("/api/wallet/fund"));
-        assertForbidden(post("/api/wallet/transfers"));
+        assertForbidden(get("/api/wallet/transfers"));
+        assertForbidden(put("/api/wallet/transfers"));
         assertForbidden(get("/api/unlisted"));
         assertMatrixParameterRejected(get("/api/wallet;owner=other"));
         assertMatrixParameterRejected(get("/api/wallet;jsessionid=untrusted"));
     }
 
     @Test
-    void persistenceIncludesV3TransactionWhileTheHttpSurfaceRemainsUnchanged() {
+    void persistenceIncludesV3TransactionAndTheHttpSurfaceHasExactlyFiveEndpoints() {
         Integer migrations = jdbcTemplate.queryForObject(
                 "select count(*) from paynest.flyway_schema_history where version is not null",
                 Integer.class);
@@ -237,7 +239,8 @@ class CurrentWalletHttpIntegrationTests {
                 "POST /api/auth/signup",
                 "POST /api/auth/signin",
                 "GET /api/users/me",
-                "GET /api/wallet");
+                "GET /api/wallet",
+                "POST /api/wallet/transfers");
     }
 
     private void assertWallet(Wallet wallet, String token) throws Exception {
@@ -299,7 +302,7 @@ class CurrentWalletHttpIntegrationTests {
                 .filter(entry -> entry.getKey().getPatternValues().stream()
                         .anyMatch(path -> path.startsWith("/api/")))
                 .toList();
-        assertThat(mappings).hasSize(4);
+        assertThat(mappings).hasSize(5);
         assertThat(mappings).allSatisfy(entry -> assertThat(
                 entry.getKey().getMethodsCondition().getMethods()).isNotEmpty());
         return mappings.stream()

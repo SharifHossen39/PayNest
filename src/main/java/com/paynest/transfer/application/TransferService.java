@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.paynest.common.error.InsufficientBalanceException;
 import com.paynest.common.error.InvalidTransferException;
@@ -24,6 +27,7 @@ import com.paynest.wallet.persistence.WalletRepository;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -53,7 +57,7 @@ public class TransferService {
         this.validator = validator;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TransferResponse transfer(long senderId, TransferRequest request) {
         CanonicalTransfer canonical = validate(request);
 
@@ -64,10 +68,12 @@ public class TransferService {
             throw new SelfTransferNotAllowedException();
         }
 
-        Wallet senderWallet = walletRepository.findByUserId(sender.getId())
-                .orElseThrow(WalletNotFoundException::new);
-        Wallet recipientWallet = walletRepository.findByUserId(recipient.getId())
-                .orElseThrow(WalletNotFoundException::new);
+        List<Wallet> lockedWallets = walletRepository.findAllByUserIdsForUpdate(
+                List.of(sender.getId(), recipient.getId()));
+        Map<Long, Wallet> walletByUserId = lockedWallets.stream()
+                .collect(Collectors.toMap(wallet -> wallet.getUser().getId(), Function.identity()));
+        Wallet senderWallet = requireWallet(walletByUserId, sender.getId());
+        Wallet recipientWallet = requireWallet(walletByUserId, recipient.getId());
         requireUsdWallets(senderWallet, recipientWallet);
         if (canonical.amount().compareTo(senderWallet.getBalance()) > 0) {
             throw new InsufficientBalanceException();
@@ -79,15 +85,23 @@ public class TransferService {
                 senderWallet, recipientWallet, canonical.amount(), clock));
 
         return new TransferResponse(
-                transaction.getId(),
-                SENT,
-                recipient.getName(),
-                recipient.getEmail(),
-                transaction.getAmount(),
-                senderWallet.getCurrency(),
-                transaction.getStatus().name(),
-                transaction.getCreatedAt(),
+                new TransferResponse.TransactionDetails(
+                        transaction.getId(),
+                        SENT,
+                        new TransferResponse.Counterparty(recipient.getName(), recipient.getEmail()),
+                        transaction.getAmount(),
+                        senderWallet.getCurrency(),
+                        transaction.getStatus().name(),
+                        transaction.getCreatedAt()),
                 senderWallet.getBalance());
+    }
+
+    private static Wallet requireWallet(Map<Long, Wallet> walletByUserId, Long userId) {
+        Wallet wallet = walletByUserId.get(userId);
+        if (wallet == null) {
+            throw new WalletNotFoundException();
+        }
+        return wallet;
     }
 
     private CanonicalTransfer validate(TransferRequest request) {
