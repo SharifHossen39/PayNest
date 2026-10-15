@@ -12,6 +12,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -55,6 +56,32 @@ public class GlobalExceptionHandler {
                 "Request validation failed",
                 request,
                 Map.of());
+    }
+
+    @ExceptionHandler(InvalidPaginationException.class)
+    ResponseEntity<ApiError> handleInvalidPagination(
+            InvalidPaginationException exception,
+            HttpServletRequest request
+    ) {
+        return errorResponse(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Request validation failed",
+                request,
+                exception.getFieldErrors());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiError> handleParameterTypeMismatch(
+            MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        return errorResponse(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Request validation failed",
+                request,
+                Map.of(exception.getName(), "Value has an invalid format"));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
