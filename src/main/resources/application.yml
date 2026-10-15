@@ -5,7 +5,7 @@ spring:
     exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   datasource:
     url: ${PAYNEST_DB_URL:jdbc:postgresql://localhost:5432/paynest}
-    username: ${PAYNEST_DB_USERNAME:paynest_local}
+    username: ${PAYNEST_DB_USERNAME:paynest_test_user}
     password: ${PAYNEST_DB_PASSWORD:local-only-placeholder}
   flyway:
     enabled: true
