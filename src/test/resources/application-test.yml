@@ -6,6 +6,13 @@ spring:
     url: ${PAYNEST_TEST_DB_URL}
     username: ${PAYNEST_TEST_DB_USERNAME}
     password: ${PAYNEST_TEST_DB_PASSWORD}
+    hikari:
+      connection-init-sql: >-
+        DO $guard$ BEGIN
+        IF current_database() IS DISTINCT FROM 'paynest_test' THEN
+        RAISE EXCEPTION 'Test connection refused: database must be exactly paynest_test' USING ERRCODE = '3D000';
+        END IF;
+        END; $guard$;
 
 paynest:
   jwt:
