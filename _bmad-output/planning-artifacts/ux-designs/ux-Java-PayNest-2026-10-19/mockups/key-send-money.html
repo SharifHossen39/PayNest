@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PayNest · Send money design preview</title>
+  <style>
+    /* Approved visual reference, governed by DESIGN.md: Layout & Spacing, Colors,
+       Typography, Components; EXPERIENCE.md: Information Architecture,
+       Component Patterns, State Patterns, Key Flows (FE-UJ-1/2/4).
+       Inline review and separate unknown-outcome specimen trace to .memlog.md.
+       This is a static reference, not an implementation or simultaneous runtime states. */
+    :root { color-scheme:light; --canvas:#F7F8F5; --surface:#FFFFFF; --ink:#172B2A; --muted:#526361; --teal:#0F766E; --hover:#115E59; --tint:#E8F3EF; --border:#7C8C87; --divider:#DCE3DF; --warning:#92400E; --warning-bg:#FFFBEB; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--canvas); color:var(--ink); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:16px; line-height:1.5; }
+    a { color:var(--teal); text-underline-offset:4px; }
+    a:hover { color:var(--hover); }
+    a:focus-visible { outline:3px solid var(--teal); outline-offset:4px; }
+    button { font:inherit; }
+    .preview-banner { padding:13px 24px; text-align:center; background:var(--tint); color:var(--ink); font-size:13px; }
+    .preview-banner strong { font-weight:650; }
+    .browser { max-width:1440px; margin:28px auto; border:1px solid var(--divider); border-radius:12px; overflow:hidden; background:var(--surface); }
+    .browser-bar { min-height:42px; padding:10px 20px; background:#EEF1EC; color:var(--muted); border-bottom:1px solid var(--divider); font-size:12px; letter-spacing:.02em; }
+    .app { display:grid; grid-template-columns:224px minmax(0,1fr); min-height:740px; background:var(--canvas); }
+    .sidebar { display:flex; flex-direction:column; gap:48px; padding:32px 20px 24px; background:var(--surface); border-right:1px solid var(--divider); }
+    .brand { color:var(--ink); font-size:23px; font-weight:720; letter-spacing:-.8px; padding:0 12px; }
+    .brand span { color:var(--teal); }
+    .navigation { display:flex; flex-direction:column; gap:6px; }
+    .navigation a,.navigation button,.signout { display:flex; align-items:center; min-height:44px; padding:10px 12px; border:0; border-radius:6px; background:transparent; color:var(--muted); text-align:left; text-decoration:none; font-size:15px; }
+    .navigation a:hover { background:var(--tint); }
+    .navigation a[aria-current="page"] { background:var(--tint); color:var(--teal); font-weight:650; }
+    button:disabled { cursor:default; opacity:1; }
+    .navigation button:disabled,.signout:disabled { color:var(--muted); }
+    .signout { margin-top:auto; width:100%; }
+    .content { width:100%; max-width:1120px; padding:52px 32px 40px; }
+    .transfer { max-width:640px; }
+    .eyebrow { margin:0 0 8px; color:var(--muted); font-size:13px; }
+    h1 { margin:0; font-size:28px; font-weight:650; line-height:1.25; letter-spacing:-.02em; }
+    .intro { margin:12px 0 32px; color:var(--muted); }
+    .review-details { margin:0; padding:24px; background:var(--surface); border-radius:10px; display:grid; gap:24px; }
+    .review-details div { display:grid; gap:8px; }
+    dt { color:var(--muted); font-size:14px; }
+    dd { margin:0; overflow-wrap:anywhere; }
+    .recipient { font-size:18px; font-weight:550; }
+    .money { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; font-size:20px; font-weight:600; line-height:1.4; font-variant-numeric:tabular-nums; }
+    .currency { color:var(--muted); font-size:20px; font-weight:450; letter-spacing:0; }
+    .final-note { margin:24px 0 20px; color:var(--muted); font-size:14px; }
+    .actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+    .button { min-height:44px; display:inline-flex; justify-content:center; align-items:center; padding:11px 20px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--ink); text-decoration:none; font-size:15px; font-weight:600; }
+    .button.primary { background:var(--teal); border-color:var(--teal); color:white; }
+    .preview-note { margin:30px 0 0; font-size:12px; color:var(--muted); }
+    .specimen { max-width:640px; margin-top:56px; padding-top:26px; border-top:1px dashed var(--border); }
+    .specimen-label { margin:0 0 6px; font-size:12px; font-weight:650; letter-spacing:.06em; color:var(--muted); }
+    .specimen-context { margin:0 0 22px; color:var(--muted); font-size:13px; }
+    .warning { padding:24px; background:var(--warning-bg); color:var(--warning); border:1px solid var(--warning); border-radius:6px; }
+    .warning h2 { margin:0 0 10px; font-size:18px; font-weight:650; line-height:1.4; }
+    .warning p { margin:0; font-size:15px; }
+    .recovery-actions { margin-top:18px; }
+    @media(max-width:1023px) {
+      .browser { margin:0; border:0; border-radius:0; }
+      .app { display:block; min-height:calc(100vh - 91px); }
+      .sidebar { display:grid; grid-template-columns:1fr auto; gap:20px 12px; padding:20px; border-right:0; border-bottom:1px solid var(--divider); }
+      .brand { padding:5px 0; align-self:center; }
+      .signout { grid-column:2; grid-row:1; margin:0; width:auto; }
+      .navigation { grid-column:1 / -1; flex-direction:row; flex-wrap:wrap; gap:6px; }
+      .content { padding:32px 20px; }
+      h1 { font-size:28px; }
+      .preview-banner { padding:12px 20px; text-align:left; }
+    }
+    @media(max-width:420px) {
+      .navigation a,.navigation button { padding:10px; font-size:14px; }
+      .actions { align-items:stretch; }
+      .actions .button { width:100%; }
+      .warning { padding:20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-banner"><strong>Design preview · sample data · not connected to PayNest</strong></div>
+  <div class="browser">
+    <div class="browser-bar">PayNest / Send money · approved design reference</div>
+    <div class="app">
+      <aside class="sidebar" aria-label="Application navigation">
+        <div class="brand">Pay<span>Nest</span></div>
+        <nav class="navigation" aria-label="Main">
+          <a href="key-dashboard.html">Dashboard</a>
+          <a href="key-send-money.html" aria-current="page">Send money</a>
+          <button type="button" disabled>Transactions</button>
+        </nav>
+        <button class="signout" type="button" disabled>Sign out</button>
+      </aside>
+      <main class="content">
+        <section class="transfer" aria-labelledby="review-heading">
+          <p class="eyebrow">Send money · Review</p>
+          <h1 id="review-heading">Review transfer</h1>
+          <p class="intro">Check the recipient and amount before you send.</p>
+          <dl class="review-details">
+            <div><dt>Recipient</dt><dd class="recipient">rahim@example.com</dd></div>
+            <div><dt>Amount</dt><dd class="money">150.00 <span class="currency">USD</span></dd></div>
+          </dl>
+          <p class="final-note">Confirming submits this transfer once. This is the final step before sending.</p>
+          <div class="actions">
+            <button class="button" type="button" disabled>Change details</button>
+            <button class="button primary" type="button" disabled>Confirm and send 150.00 USD</button>
+          </div>
+          <p class="preview-note">Static design reference. Buttons are disabled and do not submit or load data. Dashboard and Send money links open the two local design previews.</p>
+        </section>
+        <section class="specimen" aria-labelledby="specimen-heading">
+          <p class="specimen-label" id="specimen-heading">SEPARATE STATE SPECIMEN · UNKNOWN OUTCOME</p>
+          <p class="specimen-context">An alternative recovery state after confirmation. It replaces the review above; these states are not shown together in the application.</p>
+          <div class="warning">
+            <h2>Transfer outcome unknown</h2>
+            <p>We couldn’t confirm whether your transfer completed. Check your wallet and transactions before sending again.</p>
+          </div>
+          <div class="actions recovery-actions">
+            <a class="button" href="key-dashboard.html">Go to wallet</a>
+            <button class="button" type="button" disabled>View transactions</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
