@@ -195,16 +195,19 @@ class RegistrationHttpIntegrationTests {
     void nonSignupRouteAndNonPostSignupMethodAreDeniedByDefault() throws Exception {
         mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"));
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"));
         mockMvc.perform(get("/api/auth/signup"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
     }
 
     @Test
-    void equivalentStoredEmailReturnsTheStableConflictWithoutAnotherPair() throws Exception {
+    void equivalentStoredEmailReturnsTheStableConflictWithoutAnotherPair(CapturedOutput output)
+            throws Exception {
         String identity = "Case." + UUID.randomUUID() + "@Example.com";
         mockMvc.perform(signup(new SignUpRequest("First User", identity, "valid-password")))
                 .andExpect(status().isCreated());
+        int logStart = output.getAll().length();
 
         mockMvc.perform(signup(new SignUpRequest(
                         "Second User", "\u2003" + identity.toUpperCase() + "\u00A0", "other-password")))
@@ -222,6 +225,15 @@ class RegistrationHttpIntegrationTests {
 
         assertThat(userRepository.count()).isOne();
         assertThat(walletRepository.count()).isOne();
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=request outcome=conflict category=duplicate_email")
+                .doesNotContain(
+                        identity,
+                        identity.toUpperCase(),
+                        "Second User",
+                        "other-password",
+                        "/api/auth/signup",
+                        "DuplicateEmailException");
     }
 
     @Test
@@ -294,6 +306,7 @@ class RegistrationHttpIntegrationTests {
                 """);
 
         String email = "rollback." + UUID.randomUUID() + "@example.com";
+        int logStart = output.getAll().length();
         mockMvc.perform(signup(new SignUpRequest("Fail Wallet", email, "valid-password")))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
@@ -311,6 +324,15 @@ class RegistrationHttpIntegrationTests {
         assertThat(userRepository.findByEmail(email)).isEmpty();
         assertThat(userRepository.count()).isZero();
         assertThat(walletRepository.count()).isZero();
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=request outcome=failure category=persistence")
+                .doesNotContain(
+                        email,
+                        "Fail Wallet",
+                        "valid-password",
+                        "test wallet rejection",
+                        "/api/auth/signup",
+                        "DataAccessException");
         assertSensitiveFailureDetailsAbsent(
                 output,
                 email,

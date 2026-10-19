@@ -20,8 +20,11 @@ import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -41,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class TransactionDetailHttpIntegrationTests {
 
     private static final Clock FIXTURE_CLOCK = Clock.fixed(
@@ -137,11 +141,13 @@ class TransactionDetailHttpIntegrationTests {
     }
 
     @Test
-    void unknownAndUnrelatedTransactionsReturnSameSafeNotFoundContract() throws Exception {
+    void unknownAndUnrelatedTransactionsReturnSameSafeNotFoundContract(CapturedOutput output)
+            throws Exception {
         Wallet viewer = persistWallet("Protected Viewer", "protected-viewer");
         Wallet sender = persistWallet("Unrelated Sender", "unrelated-sender");
         Wallet recipient = persistWallet("Unrelated Recipient", "unrelated-recipient");
         long unrelatedId = insertTransaction(sender, recipient, "99.99", TRANSACTION_TIME);
+        int logStart = output.getAll().length();
 
         MvcResult unrelated = assertTransactionNotFound(viewer, unrelatedId);
         MvcResult unknown = assertTransactionNotFound(viewer, unrelatedId + 1_000_000L);
@@ -149,6 +155,15 @@ class TransactionDetailHttpIntegrationTests {
                 .doesNotContain("Unrelated Sender", "Unrelated Recipient", "99.99");
         assertThat(unknown.getResponse().getContentAsString())
                 .doesNotContain("Unrelated Sender", "Unrelated Recipient", "99.99");
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=request outcome=rejected category=transaction_not_found")
+                .doesNotContain(
+                        viewer.getUser().getEmail(),
+                        sender.getUser().getEmail(),
+                        recipient.getUser().getEmail(),
+                        "99.99",
+                        "/api/transactions/",
+                        "TransactionNotFoundException");
     }
 
     @Test
@@ -240,8 +255,8 @@ class TransactionDetailHttpIntegrationTests {
                 .andExpect(jsonPath("$.timestamp").value(
                         org.hamcrest.Matchers.matchesPattern(".*Z")))
                 .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"))
-                .andExpect(jsonPath("$.message").value("Authentication failed"))
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"))
+                .andExpect(jsonPath("$.message").value("Authentication token is invalid"))
                 .andExpect(jsonPath("$.path").value(expectedPath))
                 .andExpect(jsonPath("$.fieldErrors").doesNotExist())
                 .andExpect(jsonPath("$..sender").doesNotExist())

@@ -274,8 +274,8 @@ class CurrentWalletHttpIntegrationTests {
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.timestamp").value(org.hamcrest.Matchers.matchesPattern(".*Z")))
                 .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"))
-                .andExpect(jsonPath("$.message").value("Authentication failed"))
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"))
+                .andExpect(jsonPath("$.message").value("Authentication token is invalid"))
                 .andExpect(jsonPath("$.path").value("/api/wallet"))
                 .andExpect(jsonPath("$.fieldErrors").doesNotExist())
                 .andExpect(jsonPath("$..exception").doesNotExist())
@@ -287,14 +287,26 @@ class CurrentWalletHttpIntegrationTests {
         mockMvc.perform(request)
                 .andExpect(status().isForbidden())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
-                        .doesNotExist(HttpHeaders.WWW_AUTHENTICATE));
+                        .doesNotExist(HttpHeaders.WWW_AUTHENTICATE))
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("Access denied"))
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist());
     }
 
     private void assertMatrixParameterRejected(MockHttpServletRequestBuilder request) throws Exception {
         mockMvc.perform(request)
                 .andExpect(status().isBadRequest())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
-                        .doesNotExist(HttpHeaders.WWW_AUTHENTICATE));
+                        .doesNotExist(HttpHeaders.WWW_AUTHENTICATE))
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist());
     }
 
     private List<String> productEndpoints() {

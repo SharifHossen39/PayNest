@@ -6,14 +6,14 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -34,7 +34,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
-            JsonAuthenticationEntryPoint authenticationEntryPoint
+            JsonAuthenticationEntryPoint authenticationEntryPoint,
+            JsonAccessDeniedHandler accessDeniedHandler
     ) throws Exception {
         RequestMatcher currentProfileRequest = request ->
                 "GET".equals(request.getMethod())
@@ -55,7 +56,6 @@ public class SecurityConfig {
             return "GET".equals(request.getMethod())
                     && path.matches("/api/transactions/[^/]+");
         };
-        HttpStatusEntryPoint forbiddenEntryPoint = new HttpStatusEntryPoint(HttpStatus.FORBIDDEN);
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -72,9 +72,13 @@ public class SecurityConfig {
                                     || transactionDetailRequest.matches(request)) {
                                 authenticationEntryPoint.commence(request, response, exception);
                             } else {
-                                forbiddenEntryPoint.commence(request, response, exception);
+                                accessDeniedHandler.handle(
+                                        request,
+                                        response,
+                                        new AccessDeniedException("Access denied"));
                             }
-                        }))
+                        })
+                        .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/signin").permitAll()
                         .requestMatchers(
@@ -92,5 +96,12 @@ public class SecurityConfig {
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    WebSecurityCustomizer requestRejectedHandler(
+            JsonRequestRejectedHandler requestRejectedHandler
+    ) {
+        return web -> web.requestRejectedHandler(requestRejectedHandler);
     }
 }

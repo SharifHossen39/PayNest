@@ -230,13 +230,13 @@ class TransactionHistoryHttpIntegrationTests {
     void missingOrInvalidJwtAndMissingCurrentWalletReturnSafeErrors() throws Exception {
         mockMvc.perform(get("/api/transactions"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"))
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"))
                 .andExpect(jsonPath("$..content").doesNotExist());
 
         mockMvc.perform(get("/api/transactions")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"))
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"))
                 .andExpect(jsonPath("$..content").doesNotExist());
 
         User walletless = persistUser("Walletless User", "walletless-user");

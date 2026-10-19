@@ -9,6 +9,7 @@ import java.util.UUID;
 import javax.crypto.SecretKey;
 
 import com.paynest.auth.api.SignInRequest;
+import com.paynest.auth.security.JwtProperties;
 import com.paynest.support.TestDatabaseSupport;
 import com.paynest.user.domain.User;
 import com.paynest.user.persistence.UserRepository;
@@ -26,6 +27,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,9 +51,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(OutputCaptureExtension.class)
 class SignInHttpIntegrationTests {
 
-    private static final String TEST_SECRET =
-            "dGVzdC1vbmx5LXBheW5lc3Qtand0LXNlY3JldC0zMmI=";
-
     @Autowired
     private WebApplicationContext applicationContext;
 
@@ -68,6 +68,12 @@ class SignInHttpIntegrationTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private JwtProperties jwtProperties;
+
+    @org.springframework.beans.factory.annotation.Value("${paynest.jwt.secret}")
+    private String jwtSecret;
 
     private MockMvc mockMvc;
 
@@ -114,7 +120,7 @@ class SignInHttpIntegrationTests {
         assertThat(token.getPayload().getSubject()).isEqualTo(user.getId().toString());
         assertThat(token.getPayload().getIssuedAt().toInstant().getNano()).isZero();
         assertThat(token.getPayload().getExpiration().toInstant()).isEqualTo(responseExpiry);
-        assertThat(responseExpiry.minusSeconds(3600))
+        assertThat(responseExpiry.minus(jwtProperties.ttl()))
                 .isEqualTo(token.getPayload().getIssuedAt().toInstant());
         assertThat(userRepository.count()).isOne();
         assertThat(walletRepository.count()).isZero();
@@ -125,7 +131,8 @@ class SignInHttpIntegrationTests {
                 canonicalEmail,
                 canonicalEmail.toUpperCase(),
                 password,
-                TEST_SECRET);
+                jwtSecret);
+        assertThat(output.getAll()).contains("event=authentication outcome=success");
     }
 
     @Test
@@ -145,7 +152,9 @@ class SignInHttpIntegrationTests {
     }
 
     @Test
-    void invalidRequestsReturnSafeValidationErrorsBeforeAnyDatabaseMutation() throws Exception {
+    void invalidRequestsReturnSafeValidationErrorsBeforeAnyDatabaseMutation(CapturedOutput output)
+            throws Exception {
+        int logStart = output.getAll().length();
         mockMvc.perform(signIn(new SignInRequest("not-an-email", "")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(6)))
@@ -173,22 +182,43 @@ class SignInHttpIntegrationTests {
 
         assertThat(userRepository.count()).isZero();
         assertThat(walletRepository.count()).isZero();
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=request outcome=rejected category=validation")
+                .doesNotContain(
+                        "event=transfer outcome=rejected category=validation",
+                        "not-an-email",
+                        "/api/auth/signin",
+                        "HttpMessageNotReadableException");
     }
 
     @Test
-    void unsupportedSigninMediaTypeReturnsSafeFourFifteen() throws Exception {
+    void unsupportedSigninMediaTypeReturnsSafeValidationError() throws Exception {
         mockMvc.perform(post("/api/auth/signin")
                         .contentType("text/plain")
                         .content("not-json"))
-                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.status").value(415))
-                .andExpect(jsonPath("$.error").value("UNSUPPORTED_MEDIA_TYPE"))
-                .andExpect(jsonPath("$.message").value("Content type is not supported"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
                 .andExpect(jsonPath("$.path").value("/api/auth/signin"))
                 .andExpect(jsonPath("$.fieldErrors").doesNotExist())
                 .andExpect(jsonPath("$..exception").doesNotExist())
                 .andExpect(jsonPath("$..stackTrace").doesNotExist());
+    }
+
+    @Test
+    void incompatibleAcceptHeaderStillReturnsTheSharedJsonErrorContract() throws Exception {
+        mockMvc.perform(post("/api/auth/signin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_XML)
+                        .content("{\"email\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
+                .andExpect(jsonPath("$.path").value("/api/auth/signin"));
     }
 
     @Test
@@ -224,20 +254,35 @@ class SignInHttpIntegrationTests {
                 wrongPassword,
                 "anything-sensitive",
                 "right-sensitive-password",
-                TEST_SECRET);
+                jwtSecret);
+        assertThat(output.getAll())
+                .contains("event=authentication outcome=failure category=invalid_credentials");
     }
 
     @Test
-    void onlyPostSigninIsPublicAndOtherRoutesRemainDeniedByDefault() throws Exception {
-        mockMvc.perform(get("/api/auth/signin"))
-                .andExpect(status().isForbidden());
+    void onlyPostSigninIsPublicAndOtherRoutesRemainDeniedByDefault(CapturedOutput output)
+            throws Exception {
+        int logStart = output.getAll().length();
+        mockMvc.perform(get("/api/auth/signin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer malformed-private-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
         mockMvc.perform(post("/api/auth/unlisted")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer malformed-private-token")
                         .contentType("application/json")
                         .content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
         mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("AUTHENTICATION_FAILED"));
+                .andExpect(jsonPath("$.error").value("INVALID_TOKEN"));
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=authorization outcome=denied category=access_denied")
+                .doesNotContain(
+                        "malformed-private-token",
+                        "/api/auth/signin",
+                        "/api/auth/unlisted",
+                        "AccessDeniedException");
     }
 
     private User persistUser(String email, String password) {
@@ -257,7 +302,7 @@ class SignInHttpIntegrationTests {
     }
 
     private Jws<Claims> parse(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(TEST_SECRET));
+        SecretKey key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(jwtSecret));
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
     }
 }

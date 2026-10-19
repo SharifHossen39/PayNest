@@ -88,9 +88,12 @@ class TransferHttpIntegrationTests {
     }
 
     @Test
-    void validJwtCreatesTransferForOnlyItsSubjectAndReturnsExactNestedContract() throws Exception {
+    void validJwtCreatesTransferForOnlyItsSubjectAndReturnsExactNestedContract(
+            CapturedOutput output
+    ) throws Exception {
         Wallet sender = persistFundedWallet("Sender", "sender", "500.00");
         Wallet recipient = persistFundedWallet("Recipient", "recipient", "100.00");
+        int logStart = output.getAll().length();
 
         mockMvc.perform(transferRequest(sender, recipient.getUser().getEmail(), "150.00")
                         .queryParam("senderId", recipient.getUser().getId().toString())
@@ -119,6 +122,12 @@ class TransferHttpIntegrationTests {
         assertThat(balance(sender)).isEqualByComparingTo("350.00");
         assertThat(balance(recipient)).isEqualByComparingTo("250.00");
         assertThat(transactionCount()).isOne();
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=transfer outcome=success")
+                .doesNotContain(
+                        sender.getUser().getEmail(),
+                        recipient.getUser().getEmail(),
+                        "150.00");
     }
 
     @Test
@@ -140,10 +149,12 @@ class TransferHttpIntegrationTests {
     }
 
     @Test
-    void businessAndValidationFailuresUseStableSafeFourXxContracts() throws Exception {
+    void businessAndValidationFailuresUseStableSafeFourXxContracts(CapturedOutput output)
+            throws Exception {
         Wallet sender = persistFundedWallet("Sender", "sender", "10.00");
         Wallet recipient = persistFundedWallet("Recipient", "recipient", "5.00");
         User recipientWithoutWallet = persistUser("No Wallet", "no-wallet");
+        int logStart = output.getAll().length();
 
         mockMvc.perform(transferRequest(sender, "not-an-email", "1.00"))
                 .andExpect(status().isBadRequest())
@@ -169,12 +180,29 @@ class TransferHttpIntegrationTests {
         assertThat(balance(sender)).isEqualByComparingTo("10.00");
         assertThat(balance(recipient)).isEqualByComparingTo("5.00");
         assertThat(transactionCount()).isZero();
+        assertThat(output.getAll().substring(logStart))
+                .contains(
+                        "event=transfer outcome=rejected category=validation",
+                        "event=transfer outcome=rejected category=user_not_found",
+                        "event=transfer outcome=rejected category=wallet_not_found",
+                        "event=transfer outcome=rejected category=self_transfer",
+                        "event=transfer outcome=rejected category=insufficient_balance")
+                .doesNotContain(
+                        sender.getUser().getEmail(),
+                        recipient.getUser().getEmail(),
+                        recipientWithoutWallet.getEmail(),
+                        "not-an-email",
+                        "10.01",
+                        "/api/wallet/transfers",
+                        "InvalidTransferException");
     }
 
     @Test
-    void heldWalletLockReturnsBoundedConflictWithoutRetryOrStateChange() throws Exception {
+    void heldWalletLockReturnsBoundedConflictWithoutRetryOrStateChange(CapturedOutput output)
+            throws Exception {
         Wallet sender = persistFundedWallet("Sender", "sender", "100.00");
         Wallet recipient = persistFundedWallet("Recipient", "recipient", "25.00");
+        int logStart = output.getAll().length();
 
         try (Connection blocker = dataSource.getConnection()) {
             blocker.setAutoCommit(false);
@@ -189,6 +217,9 @@ class TransferHttpIntegrationTests {
             assertThat(transactionCount(blocker)).isZero();
             blocker.rollback();
         }
+        assertThat(output.getAll().substring(logStart))
+                .contains("event=transfer outcome=conflict category=concurrency")
+                .doesNotContain(sender.getUser().getEmail(), recipient.getUser().getEmail(), "10.00");
     }
 
     @Test
@@ -218,6 +249,8 @@ class TransferHttpIntegrationTests {
                 FAILURE_TRIGGER_AMOUNT.toPlainString(),
                 FAILURE_TRIGGER_MESSAGE,
                 "23514");
+        assertThat(operationLogs)
+                .contains("event=transfer outcome=failure category=persistence");
     }
 
     private MockHttpServletRequestBuilder transferRequest(
@@ -232,7 +265,7 @@ class TransferHttpIntegrationTests {
     }
 
     private void assertUnauthorized(MockHttpServletRequestBuilder request) throws Exception {
-        assertError(request, 401, "AUTHENTICATION_FAILED", "Authentication failed");
+        assertError(request, 401, "INVALID_TOKEN", "Authentication token is invalid");
     }
 
     private void assertError(
