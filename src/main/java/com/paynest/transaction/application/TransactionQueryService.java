@@ -3,11 +3,15 @@ package com.paynest.transaction.application;
 import java.util.List;
 
 import com.paynest.common.error.InvalidPaginationException;
+import com.paynest.common.error.TransactionNotFoundException;
 import com.paynest.common.error.WalletNotFoundException;
+import com.paynest.transaction.api.TransactionDetailResponse;
+import com.paynest.transaction.api.TransactionDetailResponse.Participant;
 import com.paynest.transaction.api.TransactionHistoryItemResponse;
 import com.paynest.transaction.api.TransactionHistoryItemResponse.Counterparty;
 import com.paynest.transaction.api.TransactionHistoryPageResponse;
 import com.paynest.transaction.persistence.TransactionHistoryRow;
+import com.paynest.transaction.persistence.TransactionDetailRow;
 import com.paynest.transaction.persistence.TransactionRepository;
 import com.paynest.wallet.domain.Wallet;
 import com.paynest.wallet.persistence.WalletRepository;
@@ -36,9 +40,7 @@ public class TransactionQueryService {
     @Transactional(readOnly = true)
     public TransactionHistoryPageResponse history(long userId, int page, int size) {
         validatePagination(page, size);
-        Long walletId = walletRepository.findByUserId(userId)
-                .map(Wallet::getId)
-                .orElseThrow(WalletNotFoundException::new);
+        Long walletId = currentWalletId(userId);
         Page<TransactionHistoryRow> result = transactionRepository.findHistoryByParticipant(
                 walletId,
                 PageRequest.of(page, size));
@@ -52,6 +54,29 @@ public class TransactionQueryService {
                 result.getTotalElements(),
                 result.getTotalPages(),
                 result.isLast());
+    }
+
+    @Transactional(readOnly = true)
+    public TransactionDetailResponse detail(long userId, long transactionId) {
+        Long walletId = currentWalletId(userId);
+        TransactionDetailRow row = transactionRepository.findDetailByIdAndParticipant(
+                        transactionId, walletId)
+                .orElseThrow(TransactionNotFoundException::new);
+        return new TransactionDetailResponse(
+                row.id(),
+                walletId.equals(row.senderWalletId()) ? "SENT" : "RECEIVED",
+                new Participant(row.senderName(), row.senderEmail()),
+                new Participant(row.recipientName(), row.recipientEmail()),
+                row.amount(),
+                Wallet.USD,
+                row.status().name(),
+                row.createdAt());
+    }
+
+    private Long currentWalletId(long userId) {
+        return walletRepository.findByUserId(userId)
+                .map(Wallet::getId)
+                .orElseThrow(WalletNotFoundException::new);
     }
 
     private static void validatePagination(int page, int size) {

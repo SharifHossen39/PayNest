@@ -219,7 +219,7 @@ class CurrentWalletHttpIntegrationTests {
     }
 
     @Test
-    void persistenceIncludesV3TransactionAndTheHttpSurfaceHasExactlySixEndpoints() {
+    void persistenceIncludesV3TransactionAndTheHttpSurfaceHasExactlySevenEndpoints() {
         Integer migrations = jdbcTemplate.queryForObject(
                 "select count(*) from paynest.flyway_schema_history where version is not null",
                 Integer.class);
@@ -241,6 +241,7 @@ class CurrentWalletHttpIntegrationTests {
                 "GET /api/users/me",
                 "GET /api/wallet",
                 "GET /api/transactions",
+                "GET /api/transactions/{id}",
                 "POST /api/wallet/transfers");
     }
 
@@ -303,7 +304,7 @@ class CurrentWalletHttpIntegrationTests {
                 .filter(entry -> entry.getKey().getPatternValues().stream()
                         .anyMatch(path -> path.startsWith("/api/")))
                 .toList();
-        assertThat(mappings).hasSize(6);
+        assertThat(mappings).hasSize(7);
         assertThat(mappings).allSatisfy(entry -> assertThat(
                 entry.getKey().getMethodsCondition().getMethods()).isNotEmpty());
         return mappings.stream()

@@ -71,6 +71,29 @@ public class GlobalExceptionHandler {
                 exception.getFieldErrors());
     }
 
+    @ExceptionHandler(InvalidTransactionIdException.class)
+    ResponseEntity<ApiError> handleInvalidTransactionId(
+            InvalidTransactionIdException exception,
+            HttpServletRequest request
+    ) {
+        return errorResponse(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Request validation failed",
+                request,
+                exception.getFieldErrors());
+    }
+
+    @ExceptionHandler(TransactionNotFoundException.class)
+    ResponseEntity<ApiError> handleTransactionNotFound(HttpServletRequest request) {
+        return errorResponse(
+                HttpStatus.NOT_FOUND,
+                "TRANSACTION_NOT_FOUND",
+                "Transaction not found",
+                request,
+                Map.of());
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     ResponseEntity<ApiError> handleParameterTypeMismatch(
             MethodArgumentTypeMismatchException exception,

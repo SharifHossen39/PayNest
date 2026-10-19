@@ -1,5 +1,7 @@
 package com.paynest.transaction.persistence;
 
+import java.util.Optional;
+
 import com.paynest.transaction.domain.Transaction;
 
 import org.springframework.data.domain.Page;
@@ -41,5 +43,29 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     Page<TransactionHistoryRow> findHistoryByParticipant(
             @Param("walletId") Long walletId,
             Pageable pageable
+    );
+
+    @Query("""
+            select new com.paynest.transaction.persistence.TransactionDetailRow(
+                detail.id,
+                senderWallet.id,
+                senderUser.name,
+                senderUser.email,
+                recipientUser.name,
+                recipientUser.email,
+                detail.amount,
+                detail.status,
+                detail.createdAt)
+            from Transaction detail
+            join detail.senderWallet senderWallet
+            join senderWallet.user senderUser
+            join detail.receiverWallet recipientWallet
+            join recipientWallet.user recipientUser
+            where detail.id = :transactionId
+              and (senderWallet.id = :walletId or recipientWallet.id = :walletId)
+            """)
+    Optional<TransactionDetailRow> findDetailByIdAndParticipant(
+            @Param("transactionId") Long transactionId,
+            @Param("walletId") Long walletId
     );
 }

@@ -50,6 +50,11 @@ public class SecurityConfig {
                 "GET".equals(request.getMethod())
                         && (request.getContextPath() + "/api/transactions")
                         .equals(request.getRequestURI());
+        RequestMatcher transactionDetailRequest = request -> {
+            String path = request.getRequestURI().substring(request.getContextPath().length());
+            return "GET".equals(request.getMethod())
+                    && path.matches("/api/transactions/[^/]+");
+        };
         HttpStatusEntryPoint forbiddenEntryPoint = new HttpStatusEntryPoint(HttpStatus.FORBIDDEN);
         return http
                 .csrf(csrf -> csrf.disable())
@@ -63,7 +68,8 @@ public class SecurityConfig {
                             if (currentProfileRequest.matches(request)
                                     || currentWalletRequest.matches(request)
                                     || transferRequest.matches(request)
-                                    || transactionHistoryRequest.matches(request)) {
+                                    || transactionHistoryRequest.matches(request)
+                                    || transactionDetailRequest.matches(request)) {
                                 authenticationEntryPoint.commence(request, response, exception);
                             } else {
                                 forbiddenEntryPoint.commence(request, response, exception);
@@ -82,6 +88,7 @@ public class SecurityConfig {
                         .requestMatchers(currentWalletRequest).authenticated()
                         .requestMatchers(transferRequest).authenticated()
                         .requestMatchers(transactionHistoryRequest).authenticated()
+                        .requestMatchers(transactionDetailRequest).authenticated()
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
